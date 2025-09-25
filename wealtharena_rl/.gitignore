@@ -1,0 +1,29 @@
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+.venv/
+venv/
+ENV/
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Log files
+logs/
+*.log
+
+# Test reports
+test_report.txt
+test_results.json
+
+# Data files
+data/
+
+# IDE specific files
+.vscode/
+.idea/
