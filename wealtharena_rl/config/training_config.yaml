@@ -1,0 +1,267 @@
+# WealthArena Multi-Agent Trading Configuration
+
+# Environment Configuration
+environment:
+  num_agents: 3
+  num_assets: 10
+  episode_length: 1000
+  initial_cash: 100000
+  action_type: "continuous"  # "discrete" or "continuous"
+  
+  # Market configuration
+  market_config:
+    volatility: 0.02
+    correlation: 0.1
+    trend: 0.001
+    mean_reversion: 0.01
+    bid_ask_spread: 0.001
+    volume_volatility: 0.3
+  
+  # Agent configurations
+  agent_configs:
+    trader_0:  # Conservative trader
+      risk_tolerance: 0.1
+      trading_frequency: 0.1
+      max_position_size: 0.2
+    trader_1:  # Aggressive trader
+      risk_tolerance: 0.3
+      trading_frequency: 0.3
+      max_position_size: 0.5
+    trader_2:  # Balanced trader
+      risk_tolerance: 0.2
+      trading_frequency: 0.2
+      max_position_size: 0.3
+  
+  # Reward configuration
+  reward_config:
+    profit_weight: 1.0
+    risk_weight: -0.1
+    cost_weight: -0.05
+    stability_weight: 0.02
+  
+  # Coordination
+  coordination_enabled: true
+  coordination_weight: 0.1
+
+# Training Configuration
+training:
+  algorithm: "PPO"  # "PPO", "A2C", "SAC", "TD3"
+  learning_rate: 3.0e-4
+  gamma: 0.99
+  gae_lambda: 0.95
+  entropy_coeff: 0.01
+  vf_loss_coeff: 0.5
+  clip_param: 0.2
+  num_sgd_iter: 10
+  sgd_minibatch_size: 128
+  train_batch_size: 4000
+  max_iterations: 1000
+  target_reward: 100.0
+  
+  # Multi-agent specific
+  multiagent:
+    policies:
+      conservative_trader:
+        model:
+          custom_model: "trading_lstm"
+          custom_model_config:
+            strategy: "conservative"
+            hidden_size: 128
+            num_layers: 2
+      aggressive_trader:
+        model:
+          custom_model: "trading_lstm"
+          custom_model_config:
+            strategy: "aggressive"
+            hidden_size: 128
+            num_layers: 2
+      balanced_trader:
+        model:
+          custom_model: "trading_lstm"
+          custom_model_config:
+            strategy: "balanced"
+            hidden_size: 128
+            num_layers: 2
+    policy_mapping_fn: "lambda agent_id, episode, worker, **kwargs: f'{agent_id.split(\"_\")[1]}_trader' if \"_\" in agent_id else 'balanced_trader'"
+    policies_to_train: ["conservative_trader", "aggressive_trader", "balanced_trader"]
+
+# Resource Configuration
+resources:
+  num_workers: 4
+  num_envs_per_worker: 2
+  num_cpus_per_worker: 1
+  num_gpus: 0.5
+  local_mode: false
+
+# Evaluation Configuration
+evaluation:
+  eval_interval: 50
+  eval_duration: 20
+  eval_episodes: 10
+  eval_metrics:
+    - "episode_reward_mean"
+    - "episode_length_mean"
+    - "portfolio_value_mean"
+    - "sharpe_ratio_mean"
+    - "max_drawdown_mean"
+
+# Checkpointing Configuration
+checkpointing:
+  checkpoint_freq: 50
+  keep_checkpoints_num: 5
+  checkpoint_dir: "./checkpoints"
+  restore_checkpoint: null
+
+# Logging Configuration
+logging:
+  log_level: "INFO"
+  log_interval: 10
+  log_metrics:
+    - "episode_reward_mean"
+    - "episode_length_mean"
+    - "portfolio_value_mean"
+    - "sharpe_ratio_mean"
+    - "max_drawdown_mean"
+    - "policy_loss"
+    - "value_loss"
+    - "entropy"
+
+# Experiment Tracking
+experiment_tracking:
+  enabled: true
+  trackers: ["mlflow", "wandb"]
+  
+  # MLflow configuration
+  mlflow:
+    enabled: true
+    tracking_uri: "http://localhost:5000"
+    experiment_name: "WealthArena_MultiAgent"
+    artifact_location: "./mlruns"
+  
+  # Weights & Biases configuration
+  wandb:
+    enabled: true
+    project_name: "wealtharena-trading"
+    entity: null
+    tags: ["multi-agent", "trading", "rllib"]
+    notes: "WealthArena multi-agent trading system with RLlib"
+
+# Data Configuration
+data:
+  # SYS1 API configuration
+  api:
+    base_url: "https://api.sys1.com"
+    api_key: null  # Set via environment variable
+    secret_key: null  # Set via environment variable
+    rate_limit: 100
+    timeout: 30
+  
+  # Data cache configuration
+  cache:
+    enabled: true
+    host: "localhost"
+    port: 6379
+    db: 0
+    password: null
+    cache_ttl: 3600
+  
+  # Data processing configuration
+  processing:
+    normalize_features: true
+    feature_scaling: "standard"  # "standard", "minmax", "robust"
+    handle_missing: "forward_fill"  # "forward_fill", "backward_fill", "interpolate", "drop"
+    technical_indicators:
+      - "sma"
+      - "ema"
+      - "rsi"
+      - "macd"
+      - "bb"
+      - "atr"
+      - "obv"
+
+# Model Configuration
+model:
+  # Custom model configuration
+  custom_model: "trading_lstm"
+  custom_model_config:
+    hidden_size: 128
+    num_layers: 2
+    dropout: 0.1
+    strategy: "balanced"
+  
+  # Framework
+  framework: "torch"
+  
+  # Model saving
+  save_model: true
+  model_dir: "./models"
+  save_frequency: 100
+
+# Hyperparameter Tuning
+hyperparameter_tuning:
+  enabled: false
+  search_space:
+    learning_rate:
+      type: "loguniform"
+      lower: 1.0e-5
+      upper: 1.0e-2
+    gamma:
+      type: "uniform"
+      lower: 0.95
+      upper: 0.999
+    entropy_coeff:
+      type: "loguniform"
+      lower: 1.0e-3
+      upper: 1.0e-1
+    clip_param:
+      type: "uniform"
+      lower: 0.1
+      upper: 0.3
+  
+  # Tuning configuration
+  num_samples: 20
+  max_concurrent: 4
+  search_algorithm: "random"  # "random", "bayesian", "grid"
+
+# Deployment Configuration
+deployment:
+  # Model serving
+  model_server:
+    enabled: false
+    host: "0.0.0.0"
+    port: 8000
+    workers: 1
+  
+  # API endpoints
+  api:
+    enabled: false
+    host: "0.0.0.0"
+    port: 8080
+    workers: 1
+  
+  # Monitoring
+  monitoring:
+    enabled: false
+    metrics_port: 9090
+    health_check_interval: 30
+
+# Security Configuration
+security:
+  # API security
+  api_security:
+    enabled: false
+    api_key_required: true
+    rate_limiting: true
+    max_requests_per_minute: 100
+  
+  # Data security
+  data_security:
+    encryption_at_rest: false
+    encryption_in_transit: true
+    data_retention_days: 365
+  
+  # Model security
+  model_security:
+    model_validation: true
+    access_control: true
+    audit_logging: true
