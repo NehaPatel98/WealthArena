@@ -36,8 +36,8 @@ class WealthArenaMultiAgentEnv(MultiAgentEnv):
         self.config = config or {}
         
         # Multi-agent parameters
-        self.num_agents = self.config.get("num_agents", 3)
-        self.agent_ids = [f"trader_{i}" for i in range(self.num_agents)]
+        self._num_agents = self.config.get("num_agents", 3)
+        self.agent_ids = [f"trader_{i}" for i in range(self._num_agents)]
         
         # Agent configurations
         self.agent_configs = self.config.get("agent_configs", {})
@@ -69,7 +69,7 @@ class WealthArenaMultiAgentEnv(MultiAgentEnv):
         # Reset environment
         self.reset()
         
-        logger.info(f"Initialized WealthArenaMultiAgentEnv with {self.num_agents} agents, "
+        logger.info(f"Initialized WealthArenaMultiAgentEnv with {self._num_agents} agents, "
                    f"{self.num_assets} assets, episode_length={self.episode_length}")
     
     def _setup_spaces(self):
@@ -158,7 +158,7 @@ class WealthArenaMultiAgentEnv(MultiAgentEnv):
             observations[agent_id] = self._get_observation(agent_id)
             infos[agent_id] = self._get_info(agent_id)
         
-        logger.debug(f"Multi-agent environment reset: {self.num_agents} agents initialized")
+        logger.debug(f"Multi-agent environment reset: {self._num_agents} agents initialized")
         
         return observations, infos
     

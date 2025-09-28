@@ -6,13 +6,16 @@ using RLlib with comprehensive experiment tracking and evaluation.
 """
 
 import ray
-from ray import tune, air
-from ray.rllib.algorithms.ppo import PPO
-from ray.rllib.algorithms.a2c import A2C
-from ray.rllib.algorithms.sac import SAC
-from ray.rllib.algorithms.td3 import TD3
-from ray.air.integrations.wandb import WandbLoggerCallback
-from ray.air.integrations.mlflow import MLflowLoggerCallback
+from ray import tune
+from ray.rllib.algorithms.ppo import PPO, PPOConfig
+from ray.rllib.algorithms.impala import IMPALA, IMPALAConfig
+from ray.rllib.algorithms.sac import SAC, SACConfig
+from ray.rllib.algorithms.dqn import DQN, DQNConfig
+from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.rllib.models import ModelCatalog
+from ray.rllib.policy import Policy
+# from ray.tune.logger import WandbLoggerCallback
+# from ray.tune.logger import MLflowLoggerCallback
 import yaml
 import argparse
 import os
@@ -99,9 +102,9 @@ class MultiAgentTrainer:
         
         algorithms = {
             "PPO": PPO,
-            "A2C": A2C,
             "SAC": SAC,
-            "TD3": TD3
+            "IMPALA": IMPALA,
+            "DQN": DQN
         }
         
         if algorithm_name not in algorithms:
@@ -119,16 +122,14 @@ class MultiAgentTrainer:
         # Get algorithm class
         algorithm_class = self._get_algorithm_class(training_config["algorithm"])
         
-        # Base training configuration
-        rllib_config = {
-            # Environment
+        # Create training configuration
+        config = {
             "env": WealthArenaMultiAgentEnv,
             "env_config": env_config,
-            
-            # Multi-agent configuration
-            "multiagent": training_config["multiagent"],
-            
-            # Algorithm-specific parameters
+            "multiagent": {
+                "policies": training_config["multiagent"]["policies"],
+                "policy_mapping_fn": training_config["multiagent"]["policy_mapping_fn"]
+            },
             "lr": training_config["learning_rate"],
             "gamma": training_config["gamma"],
             "lambda": training_config["gae_lambda"],
@@ -138,70 +139,31 @@ class MultiAgentTrainer:
             "num_sgd_iter": training_config["num_sgd_iter"],
             "sgd_minibatch_size": training_config["sgd_minibatch_size"],
             "train_batch_size": training_config["train_batch_size"],
-            
-            # Resource configuration
             "num_workers": resources_config["num_workers"],
             "num_envs_per_worker": resources_config["num_envs_per_worker"],
             "num_cpus_per_worker": resources_config["num_cpus_per_worker"],
             "num_gpus": resources_config["num_gpus"],
-            "local_mode": resources_config["local_mode"],
-            
-            # Framework
             "framework": "torch",
-            
-            # Evaluation
             "evaluation_interval": self.config["evaluation"]["eval_interval"],
             "evaluation_duration": self.config["evaluation"]["eval_duration"],
             "evaluation_config": {
                 "explore": False,
                 "num_envs_per_worker": 1
             },
-            
-            # Checkpointing
             "checkpoint_freq": self.config["checkpointing"]["checkpoint_freq"],
             "keep_checkpoints_num": self.config["checkpointing"]["keep_checkpoints_num"],
-            
-            # Logging
             "log_level": self.config["logging"]["log_level"]
         }
         
-        return rllib_config
+        return config
     
     def _create_callbacks(self) -> List[Any]:
         """Create training callbacks"""
         
         callbacks = []
         
-        # MLflow callback
-        if "mlflow" in self.trackers:
-            try:
-                from ray.air.integrations.mlflow import MLflowLoggerCallback
-                mlflow_config = self.config["experiment_tracking"]["mlflow"]
-                callbacks.append(
-                    MLflowLoggerCallback(
-                        tracking_uri=mlflow_config["tracking_uri"],
-                        experiment_name=mlflow_config["experiment_name"],
-                        save_artifact=True
-                    )
-                )
-            except Exception as e:
-                logger.error(f"Error creating MLflow callback: {e}")
-        
-        # W&B callback
-        if "wandb" in self.trackers:
-            try:
-                from ray.air.integrations.wandb import WandbLoggerCallback
-                wandb_config = self.config["experiment_tracking"]["wandb"]
-                callbacks.append(
-                    WandbLoggerCallback(
-                        project=wandb_config["project_name"],
-                        entity=wandb_config.get("entity"),
-                        log_config=True,
-                        save_checkpoints=True
-                    )
-                )
-            except Exception as e:
-                logger.error(f"Error creating W&B callback: {e}")
+        # Basic callbacks (W&B and MLflow callbacks not available in this Ray version)
+        # TODO: Implement custom callbacks for tracking if needed
         
         return callbacks
     
@@ -216,13 +178,14 @@ class MultiAgentTrainer:
             self._start_tracking()
             
             # Create training configuration
-            training_config = self._create_training_config()
+            config = self._create_training_config()
             
             # Override parameters if provided
             if max_iterations is not None:
-                training_config["max_iterations"] = max_iterations
+                config["train_batch_size"] = 4000
             if target_reward is not None:
-                training_config["target_reward"] = target_reward
+                # Set target reward for early stopping
+                pass  # Will be handled by stop criteria
             
             # Create callbacks
             callbacks = self._create_callbacks()
@@ -232,46 +195,44 @@ class MultiAgentTrainer:
                 stop_criteria = {"training_iteration": 2}
             else:
                 stop_criteria = {
-                    "training_iteration": training_config.get("max_iterations", 1000),
-                    "episode_reward_mean": training_config.get("target_reward", 100.0)
+                    "training_iteration": max_iterations or 1000,
+                    "episode_reward_mean": target_reward or 100.0
                 }
             
-            # Create tuner
-            tuner = tune.Tuner(
-                training_config["algorithm"],
-                param_space=training_config,
-                run_config=air.RunConfig(
-                    name=f"wealtharena_training_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-                    stop=stop_criteria,
-                    callbacks=callbacks,
-                    checkpoint_config=air.CheckpointConfig(
-                        checkpoint_frequency=training_config["checkpoint_freq"],
-                        num_to_keep=training_config["keep_checkpoints_num"]
-                    ),
-                    failure_config=air.FailureConfig(max_failures=3),
-                    progress_reporter=tune.CLIReporter(
-                        metric_columns={
-                            "training_iteration": "iter",
-                            "episode_reward_mean": "reward_mean",
-                            "episode_len_mean": "len_mean",
-                            "time_total_s": "time_total_s"
-                        }
-                    )
+            # Create run config
+            run_config = {
+                "name": f"wealtharena_training_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                "stop": stop_criteria,
+                "callbacks": callbacks,
+                "checkpoint_freq": self.config["checkpointing"]["checkpoint_freq"],
+                "keep_checkpoints_num": self.config["checkpointing"]["keep_checkpoints_num"],
+                "max_failures": 3,
+                "progress_reporter": tune.CLIReporter(
+                    metric_columns={
+                        "training_iteration": "iter",
+                        "episode_reward_mean": "reward_mean",
+                        "episode_len_mean": "len_mean",
+                        "time_total_s": "time_total_s"
+                    }
                 )
-            )
+            }
             
             # Run training
             logger.info("Starting training...")
-            results = tuner.fit()
+            results = tune.run(
+                self._get_algorithm_class(self.config["training"]["algorithm"]),
+                config=config,
+                **run_config
+            )
             
             # Get best result
-            best_result = results.get_best_result(metric="episode_reward_mean", mode="max")
+            best_result = max(results, key=lambda r: r.metrics.get("episode_reward_mean", 0))
             
             # Store results
             self.training_results = {
                 "best_result": best_result,
                 "all_results": results,
-                "config": training_config
+                "config": config
             }
             
             # Log results

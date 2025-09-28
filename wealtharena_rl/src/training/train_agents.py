@@ -24,15 +24,14 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 # Ray and RLlib imports
 import ray
-from ray import tune, air
-from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.algorithms.a2c import A2CConfig
-from ray.rllib.algorithms.sac import SACConfig
+from ray import tune
+from ray.rllib.algorithms.ppo import PPO, PPOConfig
+from ray.rllib.algorithms.sac import SAC, SACConfig
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy import Policy
-from ray.air.integrations.wandb import WandbLoggerCallback
-from ray.air.integrations.mlflow import MLflowLoggerCallback
+# from ray.tune.logger import WandbLoggerCallback
+# from ray.tune.logger import MLflowLoggerCallback
 
 # Custom imports
 from environments.trading_env import WealthArenaTradingEnv
