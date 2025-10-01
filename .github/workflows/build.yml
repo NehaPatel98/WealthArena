@@ -2,9 +2,11 @@ name: SonarCloud
 
 on:
   push:
-    branches: ["dev"]
+    branches: 
+      - dev
   pull_request:
-    branches: ["dev"]
+    branches: 
+      - dev
 
 jobs:
   build:
@@ -29,3 +31,7 @@ jobs:
           restore-keys: ${{ runner.os }}-sonar
 
       - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # Needed for PR comments
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}     # Defined in repo secrets
