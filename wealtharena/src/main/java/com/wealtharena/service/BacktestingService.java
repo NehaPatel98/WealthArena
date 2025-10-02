@@ -80,7 +80,8 @@ public class BacktestingService {
             
             return result;
             
-        } catch (Exception e) {
+        } catch (Exception e) 
+        {
             throw new RuntimeException("Rebalancing backtest failed: " + e.getMessage());
         }
     }
