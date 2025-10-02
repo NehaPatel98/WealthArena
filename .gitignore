@@ -1,39 +1,37 @@
-# --- Python build/cache ---
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-*.pkl
-*.egg-info/
-*.log
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
 
-# --- Virtual environments ---
-.venv/
-env/
-venv/
-*.envrc
+# dependencies
+node_modules/
 
-# --- IDE / editor files ---
-.vscode/
-.idea/
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
 .DS_Store
+*.pem
 
-# --- Environment / secrets ---
-# Reddit + Finnhub credentials
-redditData/redditCred.env
-newsData/finnhubCred.env
+# local env files
+.env*.local
 
-# Catch-all: ignore any .env files anywhere
-*.env
-
-# --- Data outputs ---
-# Reddit collected data
-redditData/*.csv
-redditData/*.jsonl
-
-# Finnhub collected data
-newsData/*.csv
-newsData/*.jsonl
-
-# --- Optional: Jupyter notebooks checkpoints ---
-.ipynb_checkpoints/
+# typescript
+*.tsbuildinfo
+.vercel
