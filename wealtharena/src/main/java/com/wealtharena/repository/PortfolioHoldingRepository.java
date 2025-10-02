@@ -36,7 +36,7 @@ public interface PortfolioHoldingRepository extends JpaRepository<PortfolioHoldi
     /**
      * Check if a holding exists for a portfolio and symbol
      */
-    boolean existsByPortfolioIdAndSymbol(Long portfolioId, String symbol);
+    boolean  existsByPortfolioIdAndSymbol(Long portfolioId, String symbol);
     
     /**
      * Find holdings by symbol across all portfolios
