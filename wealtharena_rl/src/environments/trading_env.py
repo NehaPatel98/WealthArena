@@ -17,6 +17,7 @@ from pathlib import Path
 from src.data.market_data import MarketDataProcessor
 from src.data.data_adapter import DataAdapter
 from src.models.portfolio_manager import Portfolio, RiskMetrics
+from .trend_reversal_reward import TrendReversalReward, TrendRewardConfig
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,12 @@ class WealthArenaTradingEnv(gym.Env):
         # Data components
         self.data_adapter = DataAdapter(self.config.get("data_adapter_config", {}))
         self.market_data_processor = MarketDataProcessor(self.config.get("market_data_processor_config", {}))
+        
+        # Trend reversal reward component
+        trend_reward_config = TrendRewardConfig()
+        trend_reward_config.reversal_reward_weight = self.config.get("trend_reversal_weight", 2.0)
+        trend_reward_config.continuation_reward_weight = self.config.get("trend_continuation_weight", 1.5)
+        self.trend_reversal_reward = TrendReversalReward(trend_reward_config)
         
         # Portfolio management
         self.portfolio = Portfolio(
@@ -264,7 +271,13 @@ class WealthArenaTradingEnv(gym.Env):
                 'Volume': volumes
             })
         
-        return pd.concat(ohlcv_data, axis=1)
+        # Create proper multi-level DataFrame structure
+        multi_level_data = {}
+        for symbol, df in ohlcv_data.items():
+            for col in df.columns:
+                multi_level_data[(symbol, col)] = df[col]
+        
+        return pd.DataFrame(multi_level_data)
     
     def reset(self, *, seed: int = None, options: Dict[str, Any] = None) -> Tuple[np.ndarray, Dict[str, Any]]:
         """Reset environment to initial state"""
@@ -389,7 +402,26 @@ class WealthArenaTradingEnv(gym.Env):
         if step >= len(self.market_data):
             step = len(self.market_data) - 1
         
-        return self.market_data.iloc[step]
+        # Get the data for this step and reshape it properly
+        step_data = self.market_data.iloc[step]
+        
+        # If it's a Series, convert to DataFrame with proper structure
+        if isinstance(step_data, pd.Series):
+            # Reshape the multi-level columns into a proper DataFrame
+            data_dict = {}
+            for symbol in self.symbols:
+                symbol_data = {}
+                for col in ['Open', 'High', 'Low', 'Close', 'Volume']:
+                    try:
+                        symbol_data[col] = step_data[(symbol, col)]
+                    except KeyError:
+                        # Fallback for missing data
+                        symbol_data[col] = 100.0 if col != 'Volume' else 1000.0
+                data_dict[symbol] = symbol_data
+            
+            return pd.DataFrame(data_dict).T
+        else:
+            return step_data
     
     def _calculate_reward(self, prev_value: float, prev_positions: Dict, trades: List) -> float:
         """Calculate sophisticated reward function"""
@@ -418,10 +450,13 @@ class WealthArenaTradingEnv(gym.Env):
         # 7. Diversification component
         diversification_reward = self._calculate_diversification_reward()
         
+        # 8. Trend reversal component
+        trend_reversal_reward = self._calculate_trend_reversal_reward(trades, prev_value, current_value)
+        
         # Combine all components
         total_reward = (profit_reward + risk_reward + cost_reward + 
                        stability_reward + sharpe_reward + momentum_reward + 
-                       diversification_reward)
+                       diversification_reward + trend_reversal_reward)
         
         # Store for analysis
         self.performance_metrics = {
@@ -432,10 +467,50 @@ class WealthArenaTradingEnv(gym.Env):
             "sharpe_reward": sharpe_reward,
             "momentum_reward": momentum_reward,
             "diversification_reward": diversification_reward,
+            "trend_reversal_reward": trend_reversal_reward,
             "total_reward": total_reward
         }
         
         return total_reward
+    
+    def get_trend_reversal_metrics(self) -> Dict[str, Any]:
+        """Get trend reversal performance metrics"""
+        return self.trend_reversal_reward.get_performance_metrics()
+    
+    def reset_trend_reversal_tracking(self):
+        """Reset trend reversal performance tracking"""
+        self.trend_reversal_reward.reset_performance_tracking()
+    
+    def _calculate_trend_reversal_reward(self, trades: List, prev_value: float, current_value: float) -> float:
+        """Calculate trend reversal reward component"""
+        
+        if len(self.market_data_buffer) < 50:  # Need sufficient market data
+            return 0.0
+        
+        # Convert market data buffer to DataFrame
+        market_data_df = pd.DataFrame(self.market_data_buffer[-50:])
+        
+        # Get the last action taken (from trades)
+        if not trades:
+            action = np.array([0.0])
+            prev_action = np.array([0.0])
+        else:
+            last_trade = trades[-1]
+            action = np.array([last_trade.get('action', 0.0)])
+            prev_action = np.array([0.0])  # Simplified for now
+        
+        # Calculate trend reversal reward
+        trend_reward_components = self.trend_reversal_reward.calculate_reward(
+            market_data=market_data_df,
+            action=action,
+            prev_action=prev_action,
+            portfolio_value=current_value,
+            prev_portfolio_value=prev_value,
+            current_step=self.current_step,
+            symbol_index=0
+        )
+        
+        return trend_reward_components.get('trend_reversal_reward', 0.0)
     
     def _calculate_risk_reward(self, current_value: float) -> float:
         """Calculate risk-based reward"""
@@ -577,37 +652,73 @@ class WealthArenaTradingEnv(gym.Env):
         
         features = []
         for symbol in self.symbols:
-            if symbol in current_data.index:
-                # OHLCV
-                ohlcv = current_data[symbol][['Open', 'High', 'Low', 'Close', 'Volume']].values
-                features.extend(ohlcv)
-                
-                # Technical indicators (simplified)
-                close_price = current_data[symbol]['Close']
-                features.extend([
-                    close_price,  # Price
-                    close_price,  # SMA (simplified)
-                    close_price,  # EMA (simplified)
-                    50.0,  # RSI (neutral)
-                    0.0,  # MACD
-                    0.0,  # MACD Signal
-                    0.0,  # MACD Histogram
-                    close_price * 1.02,  # BB Upper
-                    close_price,  # BB Middle
-                    close_price * 0.98,  # BB Lower
-                    close_price * 0.02,  # ATR
-                    0.0,  # OBV
-                    0.0,  # Stochastic K
-                    0.0,  # Stochastic D
-                    0.0,  # Williams %R
-                    0.0,  # CCI
-                    0.0,  # ADX
-                    0.0,  # Plus DI
-                    0.0,  # Minus DI
-                    0.0,  # Aroon Up
-                    0.0   # Aroon Down
-                ])
-            else:
+            try:
+                # Check if symbol exists in the data structure
+                if hasattr(current_data, 'columns') and symbol in current_data.columns:
+                    # OHLCV - handle both DataFrame and Series cases
+                    if isinstance(current_data[symbol], pd.Series):
+                        ohlcv = current_data[symbol][['Open', 'High', 'Low', 'Close', 'Volume']].values
+                    else:
+                        ohlcv = current_data[symbol][['Open', 'High', 'Low', 'Close', 'Volume']].values
+                    features.extend(ohlcv)
+                    
+                    # Technical indicators (simplified)
+                    close_price = current_data[symbol]['Close']
+                    features.extend([
+                        close_price,  # Price
+                        close_price,  # SMA (simplified)
+                        close_price,  # EMA (simplified)
+                        50.0,  # RSI (neutral)
+                        0.0,  # MACD
+                        0.0,  # MACD Signal
+                        0.0,  # MACD Histogram
+                        close_price * 1.02,  # BB Upper
+                        close_price,  # BB Middle
+                        close_price * 0.98,  # BB Lower
+                        close_price * 0.02,  # ATR
+                        0.0,  # OBV
+                        0.0,  # Stochastic K
+                        0.0,  # Stochastic D
+                        0.0,  # Williams %R
+                        0.0,  # CCI
+                        0.0,  # ADX
+                        0.0,  # Plus DI
+                        0.0,  # Minus DI
+                        0.0,  # Aroon Up
+                        0.0   # Aroon Down
+                    ])
+                else:
+                    # Use default values for synthetic data
+                    base_price = 100.0
+                    features.extend([
+                        base_price,  # Open
+                        base_price * 1.01,  # High
+                        base_price * 0.99,  # Low
+                        base_price,  # Close
+                        1000.0,  # Volume
+                        base_price,  # Price
+                        base_price,  # SMA (simplified)
+                        base_price,  # EMA (simplified)
+                        50.0,  # RSI (neutral)
+                        0.0,  # MACD
+                        0.0,  # MACD Signal
+                        0.0,  # MACD Histogram
+                        base_price * 1.02,  # BB Upper
+                        base_price,  # BB Middle
+                        base_price * 0.98,  # BB Lower
+                        base_price * 0.02,  # ATR
+                        0.0,  # OBV
+                        0.0,  # Stochastic K
+                        0.0,  # Stochastic D
+                        0.0,  # Williams %R
+                        0.0,  # CCI
+                        0.0,  # ADX
+                        0.0,  # Plus DI
+                        0.0,  # Minus DI
+                        0.0,  # Aroon Up
+                        0.0   # Aroon Down
+                    ])
+            except Exception as e:
                 # Fill with zeros if symbol not found
                 features.extend([0.0] * (5 + 20))
         

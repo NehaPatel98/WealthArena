@@ -1,267 +1,211 @@
-# WealthArena Multi-Agent Trading Configuration
-
-# Environment Configuration
-environment:
-  num_agents: 3
-  num_assets: 10
-  episode_length: 1000
-  initial_cash: 100000
-  action_type: "continuous"  # "discrete" or "continuous"
-  
-  # Market configuration
-  market_config:
-    volatility: 0.02
-    correlation: 0.1
-    trend: 0.001
-    mean_reversion: 0.01
-    bid_ask_spread: 0.001
-    volume_volatility: 0.3
-  
-  # Agent configurations
-  agent_configs:
-    trader_0:  # Conservative trader
-      risk_tolerance: 0.1
-      trading_frequency: 0.1
-      max_position_size: 0.2
-    trader_1:  # Aggressive trader
-      risk_tolerance: 0.3
-      trading_frequency: 0.3
-      max_position_size: 0.5
-    trader_2:  # Balanced trader
-      risk_tolerance: 0.2
-      trading_frequency: 0.2
-      max_position_size: 0.3
-  
-  # Reward configuration
-  reward_config:
-    profit_weight: 1.0
-    risk_weight: -0.1
-    cost_weight: -0.05
-    stability_weight: 0.02
-  
-  # Coordination
-  coordination_enabled: true
-  coordination_weight: 0.1
-
-# Training Configuration
-training:
-  algorithm: "PPO"  # "PPO", "A2C", "SAC", "TD3"
-  learning_rate: 3.0e-4
-  gamma: 0.99
-  gae_lambda: 0.95
-  entropy_coeff: 0.01
-  vf_loss_coeff: 0.5
-  clip_param: 0.2
-  num_sgd_iter: 10
-  sgd_minibatch_size: 128
-  train_batch_size: 4000
-  max_iterations: 1000
-  target_reward: 100.0
-  
-  # Multi-agent specific
-  multiagent:
-    policies:
-      conservative_trader:
-        model:
-          custom_model: "trading_lstm"
-          custom_model_config:
-            strategy: "conservative"
-            hidden_size: 128
-            num_layers: 2
-      aggressive_trader:
-        model:
-          custom_model: "trading_lstm"
-          custom_model_config:
-            strategy: "aggressive"
-            hidden_size: 128
-            num_layers: 2
-      balanced_trader:
-        model:
-          custom_model: "trading_lstm"
-          custom_model_config:
-            strategy: "balanced"
-            hidden_size: 128
-            num_layers: 2
-    policy_mapping_fn: "lambda agent_id, episode, worker, **kwargs: f'{agent_id.split(\"_\")[1]}_trader' if \"_\" in agent_id else 'balanced_trader'"
-    policies_to_train: ["conservative_trader", "aggressive_trader", "balanced_trader"]
-
-# Resource Configuration
-resources:
-  num_workers: 4
-  num_envs_per_worker: 2
-  num_cpus_per_worker: 1
-  num_gpus: 0.5
-  local_mode: false
-
-# Evaluation Configuration
-evaluation:
-  eval_interval: 50
-  eval_duration: 20
-  eval_episodes: 10
-  eval_metrics:
-    - "episode_reward_mean"
-    - "episode_length_mean"
-    - "portfolio_value_mean"
-    - "sharpe_ratio_mean"
-    - "max_drawdown_mean"
-
-# Checkpointing Configuration
-checkpointing:
-  checkpoint_freq: 50
-  keep_checkpoints_num: 5
-  checkpoint_dir: "./checkpoints"
-  restore_checkpoint: null
-
-# Logging Configuration
-logging:
-  log_level: "INFO"
-  log_interval: 10
-  log_metrics:
-    - "episode_reward_mean"
-    - "episode_length_mean"
-    - "portfolio_value_mean"
-    - "sharpe_ratio_mean"
-    - "max_drawdown_mean"
-    - "policy_loss"
-    - "value_loss"
-    - "entropy"
-
-# Experiment Tracking
-experiment_tracking:
-  enabled: true
-  trackers: ["mlflow", "wandb"]
-  
-  # MLflow configuration
-  mlflow:
-    enabled: true
-    tracking_uri: "http://localhost:5000"
-    experiment_name: "WealthArena_MultiAgent"
-    artifact_location: "./mlruns"
-  
-  # Weights & Biases configuration
-  wandb:
-    enabled: true
-    project_name: "wealtharena-trading"
-    entity: null
-    tags: ["multi-agent", "trading", "rllib"]
-    notes: "WealthArena multi-agent trading system with RLlib"
+# WealthArena Trading System Configuration
 
 # Data Configuration
 data:
-  # SYS1 API configuration
-  api:
-    base_url: "https://api.sys1.com"
-    api_key: null  # Set via environment variable
-    secret_key: null  # Set via environment variable
-    rate_limit: 100
-    timeout: 30
-  
-  # Data cache configuration
-  cache:
-    enabled: true
-    host: "localhost"
-    port: 6379
-    db: 0
-    password: null
-    cache_ttl: 3600
-  
-  # Data processing configuration
-  processing:
-    normalize_features: true
-    feature_scaling: "standard"  # "standard", "minmax", "robust"
-    handle_missing: "forward_fill"  # "forward_fill", "backward_fill", "interpolate", "drop"
-    technical_indicators:
-      - "sma"
-      - "ema"
-      - "rsi"
-      - "macd"
-      - "bb"
-      - "atr"
-      - "obv"
+  start_date: "2020-01-01"
+  end_date: "2024-01-01"
+  asx_symbols:
+    stocks: 200  # Top 200 ASX stocks
+    etfs: 50     # Major ETFs
+    reits: 30    # REITs
+    currencies: 10  # Major currency pairs
+    crypto: 10   # Major cryptocurrencies
 
-# Model Configuration
-model:
-  # Custom model configuration
-  custom_model: "trading_lstm"
-  custom_model_config:
-    hidden_size: 128
-    num_layers: 2
-    dropout: 0.1
-    strategy: "balanced"
+# Training Configuration
+training:
+  lookback_window: 5
+  prediction_horizon: 1
+  validation_split: 0.2
+  test_split: 0.2
+  batch_size: 32
+  epochs: 100
+  learning_rate: 0.001
+  early_stopping_patience: 10
   
-  # Framework
-  framework: "torch"
-  
-  # Model saving
-  save_model: true
-  model_dir: "./models"
-  save_frequency: 100
+  # Model-specific configurations
+  models:
+    stocks:
+      model_type: "xgboost"
+      features: ["Open", "High", "Low", "Close", "Volume", "SMA_20", "RSI", "MACD"]
+      lookback_window: 5
+    crypto:
+      model_type: "lightgbm"
+      features: ["Open", "High", "Low", "Close", "Volume", "SMA_20", "RSI", "MACD", "ATR"]
+      lookback_window: 7
+    etf:
+      model_type: "random_forest"
+      features: ["Open", "High", "Low", "Close", "Volume", "SMA_20", "RSI", "MACD", "BB_upper", "BB_lower"]
+      lookback_window: 3
+    currencies:
+      model_type: "svr"
+      features: ["Open", "High", "Low", "Close", "Volume", "SMA_20", "RSI", "MACD", "ATR", "ADX"]
+      lookback_window: 10
+    reits:
+      model_type: "gradient_boosting"
+      features: ["Open", "High", "Low", "Close", "Volume", "SMA_20", "RSI", "MACD", "OBV", "MFI"]
+      lookback_window: 5
 
-# Hyperparameter Tuning
-hyperparameter_tuning:
-  enabled: false
-  search_space:
-    learning_rate:
-      type: "loguniform"
-      lower: 1.0e-5
-      upper: 1.0e-2
-    gamma:
-      type: "uniform"
-      lower: 0.95
-      upper: 0.999
-    entropy_coeff:
-      type: "loguniform"
-      lower: 1.0e-3
-      upper: 1.0e-1
-    clip_param:
-      type: "uniform"
-      lower: 0.1
-      upper: 0.3
-  
-  # Tuning configuration
-  num_samples: 20
-  max_concurrent: 4
-  search_algorithm: "random"  # "random", "bayesian", "grid"
+# Meta Agent Configuration
+meta_agent:
+  fusion_method: "weighted"  # voting, stacking, weighted, neural
+  model_weights:
+    stocks: 0.3
+    crypto: 0.2
+    etf: 0.2
+    currencies: 0.2
+    reits: 0.1
+  confidence_threshold: 0.3
+  risk_tolerance: 0.1
+  max_position_size: 0.2
+  rebalance_frequency: 7  # days
 
-# Deployment Configuration
-deployment:
-  # Model serving
-  model_server:
-    enabled: false
-    host: "0.0.0.0"
-    port: 8000
-    workers: 1
+# Metrics Configuration
+metrics:
+  collection_interval: 60  # seconds
+  retention_days: 30
   
-  # API endpoints
-  api:
-    enabled: false
-    host: "0.0.0.0"
-    port: 8080
-    workers: 1
+  # Backend API Metrics
+  backend_api:
+    response_time_threshold: 1.0  # seconds
+    error_rate_threshold: 0.05    # 5%
+    cpu_threshold: 80             # 80%
+    memory_threshold: 85          # 85%
   
-  # Monitoring
-  monitoring:
-    enabled: false
-    metrics_port: 9090
-    health_check_interval: 30
+  # Pipeline Metrics
+  pipeline:
+    success_rate_threshold: 0.95  # 95%
+    failure_rate_threshold: 0.05  # 5%
+    duration_threshold: 60        # seconds
+  
+  # Code Quality Metrics
+  code_quality:
+    cyclomatic_complexity_threshold: 10
+    duplication_rate_threshold: 0.05  # 5%
+    test_coverage_threshold: 0.8      # 80%
+    technical_debt_threshold: 50      # hours
+  
+  # Data Store Metrics
+  data_store:
+    query_latency_threshold: 0.1      # seconds
+    p95_latency_threshold: 0.2        # seconds
+    p99_latency_threshold: 0.5        # seconds
+    disk_usage_threshold: 90          # 90%
+  
+  # Scraping Metrics
+  scraping:
+    success_rate_threshold: 0.9       # 90%
+    throughput_threshold: 100         # pages/hour
+    response_time_threshold: 2.0      # seconds
+  
+  # ML Metrics
+  ml:
+    inference_time_threshold: 0.01    # seconds
+    rmse_threshold: 0.1
+    auc_threshold: 0.8
+    f1_score_threshold: 0.8
+  
+  # Testing Metrics
+  testing:
+    coverage_threshold: 0.8           # 80%
+    failure_rate_threshold: 0.05      # 5%
 
-# Security Configuration
-security:
-  # API security
-  api_security:
-    enabled: false
-    api_key_required: true
-    rate_limiting: true
-    max_requests_per_minute: 100
+# Reporting Configuration
+reporting:
+  weekly_reports: true
+  email_notifications: false
+  output_formats: ["json", "html", "pdf"]
   
-  # Data security
-  data_security:
-    encryption_at_rest: false
-    encryption_in_transit: true
-    data_retention_days: 365
+  # Email Configuration (if enabled)
+  email:
+    smtp_server: "smtp.gmail.com"
+    smtp_port: 587
+    username: "your_email@gmail.com"
+    password: "your_password"
+    from_email: "your_email@gmail.com"
+    recipients: ["admin@wealtharena.com"]
   
-  # Model security
-  model_security:
-    model_validation: true
-    access_control: true
-    audit_logging: true
+  # Report Content
+  content:
+    include_charts: true
+    include_recommendations: true
+    include_alerts: true
+    include_trends: true
+
+# Paths Configuration
+paths:
+  data_dir: "data"
+  models_dir: "models"
+  metrics_dir: "metrics"
+  reports_dir: "reports"
+  logs_dir: "logs"
+  config_dir: "config"
+
+# System Configuration
+system:
+  timezone: "UTC"
+  log_level: "INFO"
+  max_workers: 4
+  memory_limit: "8GB"
+  
+  # Trading Configuration
+  trading:
+    daily_timeframe: true
+    trading_hours: "09:00-16:00"  # UTC
+    max_positions: 10
+    position_size_limit: 0.2      # 20% of portfolio
+    stop_loss: 0.08               # 8%
+    take_profit: 0.20             # 20%
+  
+  # Risk Management
+  risk_management:
+    max_drawdown: 0.15            # 15%
+    max_correlation: 0.7          # 70%
+    var_confidence: 0.95          # 95%
+    var_limit: 0.05               # 5% daily loss limit
+
+# Performance Configuration
+performance:
+  target_annual_return: 0.25      # 25%
+  target_sharpe_ratio: 2.0
+  target_max_drawdown: 0.15       # 15%
+  target_win_rate: 0.6            # 60%
+  
+  # Benchmarking
+  benchmarks:
+    - "SPY"  # S&P 500
+    - "QQQ"  # NASDAQ
+    - "IWM"  # Russell 2000
+    - "EFA"  # EAFE
+    - "VTI"  # Total Stock Market
+
+# Monitoring Configuration
+monitoring:
+  health_check_interval: 300      # 5 minutes
+  alert_cooldown: 3600           # 1 hour
+  max_alerts_per_hour: 10
+  
+  # Alert Channels
+  alerts:
+    email: true
+    slack: false
+    webhook: false
+  
+  # Slack Configuration (if enabled)
+  slack:
+    webhook_url: "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+    channel: "#trading-alerts"
+    username: "WealthArena Bot"
+
+# Development Configuration
+development:
+  debug_mode: false
+  test_mode: false
+  mock_data: false
+  verbose_logging: false
+  
+  # Testing
+  testing:
+    quick_test_duration: 300      # 5 minutes
+    test_data_size: 1000          # records
+    test_symbols: 10
+    test_epochs: 5
