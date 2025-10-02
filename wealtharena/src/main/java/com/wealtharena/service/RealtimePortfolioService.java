@@ -40,7 +40,8 @@ public class RealtimePortfolioService {
      * Get real-time portfolio snapshot
      */
     public PortfolioSnapshot getRealtimePortfolioSnapshot(Long portfolioId) {
-        try {
+        try 
+        {
             Portfolio portfolio = portfolioRepository.findById(portfolioId)
                 .orElseThrow(() -> new RuntimeException("Portfolio not found"));
             
