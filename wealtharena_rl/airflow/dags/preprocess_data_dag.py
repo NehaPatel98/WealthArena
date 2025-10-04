@@ -108,8 +108,8 @@ def calculate_features(**context):
                     df['Volume_MA_20'] = df['Volume'].rolling(20).mean()
                     df['Volume_Ratio'] = df['Volume'] / df['Volume_MA_20']
                 
-                # Fill NaN values
-                df = df.fillna(method='bfill').fillna(method='ffill')
+                # Fill NaN values using ONLY past data (no future data leakage)
+                df = df.fillna(method='ffill').fillna(0)
                 
                 # Save with features
                 output_path = feature_dir / f"{symbol}_features.csv"

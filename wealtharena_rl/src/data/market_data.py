@@ -438,6 +438,9 @@ class MarketDataProcessor:
         if self.handle_missing == "forward_fill":
             data = data.fillna(method="ffill")
         elif self.handle_missing == "backward_fill":
+            # WARNING: Backward fill can cause data leakage in production
+            # Only use for specific cases where future data is acceptable
+            logger.warning("Using backward fill - ensure this is intentional to avoid data leakage")
             data = data.fillna(method="bfill")
         elif self.handle_missing == "interpolate":
             data = data.interpolate()

@@ -293,12 +293,22 @@ class DataDownloader:
         df['SMA_10_20_Cross'] = np.where(df['SMA_10'] > df['SMA_20'], 1, -1)
         df['EMA_12_26_Cross'] = np.where(df['EMA_12'] > df['EMA_26'], 1, -1)
         
-        # Fill NaN values
-        df = df.fillna(method='bfill').fillna(method='ffill')
-        
-        # Replace infinite values
+        # Replace infinite values FIRST (before filling)
         df = df.replace([np.inf, -np.inf], np.nan)
-        df = df.fillna(method='bfill').fillna(method='ffill')
+        
+        # Fill NaN values using ONLY past data (forward fill only - NO FUTURE DATA)
+        df = df.fillna(method='ffill')
+        
+        # For remaining NaN at start of dataset, use safe defaults
+        df = df.fillna(0)
+        
+        # Drop first 200 rows to ensure all indicators have sufficient history
+        # This prevents data quality issues at the start of the dataset
+        min_periods = 200
+        if len(df) > min_periods:
+            rows_before = len(df)
+            df = df.iloc[min_periods:].reset_index(drop=True)
+            logger.info(f"Dropped first {min_periods} rows for data quality (had {rows_before}, now {len(df)})")
         
         logger.info(f"Technical indicators added for {symbol}: {len(df.columns)} total columns")
         return df
