@@ -18,6 +18,11 @@ import sys
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent))
+
+# Import our services
+from model_service import get_model_service
+from database import get_database
 
 # Configure logging
 logging.basicConfig(
@@ -42,10 +47,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Data directory paths
-DATA_DIR = Path(__file__).parent.parent / "data"
-FEATURES_DIR = DATA_DIR / "features"
-PROCESSED_DIR = DATA_DIR / "processed"
+# Initialize services
+model_service = get_model_service()
+db_service = get_database()
 
 
 # ==================== Data Models ====================
@@ -70,27 +74,49 @@ class ChatRequest(BaseModel):
     context: Optional[Dict[str, Any]] = None
 
 
+class TopSetupsRequest(BaseModel):
+    asset_type: str  # "stocks", "currency_pairs", "commodities", "crypto"
+    count: int = 3
+    risk_tolerance: str = "medium"  # "low", "medium", "high"
+
+
 # ==================== Helper Functions ====================
 
-def load_symbol_data(symbol: str, use_features: bool = True) -> Optional[pd.DataFrame]:
-    """Load data for a symbol"""
+def load_symbol_data(symbol: str, use_features: bool = True, days: int = None) -> Optional[pd.DataFrame]:
+    """Load data for a symbol using database service"""
     try:
         if use_features:
-            file_path = FEATURES_DIR / f"{symbol}_features.csv"
-            if not file_path.exists():
-                file_path = PROCESSED_DIR / f"{symbol}_processed.csv"
+            df = db_service.get_processed_features(symbol, days)
         else:
-            file_path = PROCESSED_DIR / f"{symbol}_processed.csv"
+            df = db_service.get_raw_market_data(symbol, days)
         
-        if not file_path.exists():
-            return None
-        
-        df = pd.read_csv(file_path)
         return df
     
     except Exception as e:
         logger.error(f"Error loading data for {symbol}: {e}")
         return None
+
+
+def load_all_symbols_for_asset_type(asset_type: str) -> Dict[str, pd.DataFrame]:
+    """Load data for all symbols of a specific asset type"""
+    
+    # Map asset types to symbol lists
+    symbol_map = {
+        'stocks': ['AAPL', 'GOOGL', 'MSFT', 'AMZN', 'TSLA', 'NVDA', 'META'],
+        'currency_pairs': ['EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD'],
+        'commodities': ['GC', 'CL', 'SI'],  # Gold, Oil, Silver
+        'crypto': ['BTC-USD', 'ETH-USD', 'SOL-USD']
+    }
+    
+    symbols = symbol_map.get(asset_type, [])
+    data_dict = {}
+    
+    for symbol in symbols:
+        df = load_symbol_data(symbol, use_features=True)
+        if df is not None and len(df) > 0:
+            data_dict[symbol] = df
+    
+    return data_dict
 
 
 def generate_mock_prediction(symbol: str, data: pd.DataFrame) -> Dict[str, Any]:
@@ -201,8 +227,8 @@ async def health_check():
     return {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
-        "data_dir_exists": DATA_DIR.exists(),
-        "features_dir_exists": FEATURES_DIR.exists()
+        "database": "connected" if db_service else "not_configured",
+        "model_service": "ready" if model_service else "not_ready"
     }
 
 
@@ -240,7 +266,7 @@ async def get_market_data(request: MarketDataRequest):
 
 @app.post("/api/predictions")
 async def get_predictions(request: PredictionRequest):
-    """Get model predictions for a symbol"""
+    """Get model predictions for a symbol with TP/SL from RL models"""
     
     # Load data
     df = load_symbol_data(request.symbol, use_features=True)
@@ -248,22 +274,83 @@ async def get_predictions(request: PredictionRequest):
     if df is None:
         raise HTTPException(status_code=404, detail=f"Data not found for {request.symbol}")
     
-    # Generate prediction
-    prediction = generate_mock_prediction(request.symbol, df)
+    # Generate prediction using RL model service
+    # This includes TP/SL from Risk Management agent
+    prediction = model_service.generate_prediction(request.symbol, df, asset_type='stock')
     
-    # Add explanation
-    prediction['explanation'] = {
-        'reason': f"Based on recent price momentum and technical indicators",
-        'key_factors': [
-            "Recent price trend",
-            "Relative strength index (RSI)",
-            "Moving average convergence"
-        ],
-        'risk_level': 'Medium',
-        'suggested_action': f"{prediction['signal']} with {prediction['confidence']*100:.0f}% confidence"
-    }
+    # Add reasoning explanation
+    prediction['reasoning'] = f"Model confidence: {prediction['confidence']*100:.0f}%. "
+    if prediction['signal'] == 'BUY':
+        prediction['reasoning'] += "Bullish signals detected with favorable risk/reward setup."
+    elif prediction['signal'] == 'SELL':
+        prediction['reasoning'] += "Bearish signals detected, recommending exit or short position."
+    else:
+        prediction['reasoning'] += "No strong directional signal, suggest holding or waiting."
     
     return prediction
+
+
+@app.post("/api/top-setups")
+async def get_top_setups(request: TopSetupsRequest):
+    """
+    Get top 3 trading setups for asset type
+    Returns best opportunities ranked by RL model confidence and risk/reward
+    """
+    
+    logger.info(f"Fetching top {request.count} setups for {request.asset_type}")
+    
+    # Load data for all symbols in asset type
+    data_dict = load_all_symbols_for_asset_type(request.asset_type)
+    
+    if not data_dict:
+        raise HTTPException(
+            status_code=404, 
+            detail=f"No data available for asset type: {request.asset_type}"
+        )
+    
+    # Generate top setups using model service
+    # This uses the ranking algorithm and returns predictions with TP/SL
+    top_setups = model_service.generate_top_setups(
+        asset_type=request.asset_type,
+        data_dict=data_dict,
+        count=request.count
+    )
+    
+    # Add additional context for each setup
+    for setup in top_setups:
+        setup['risk_tolerance_match'] = self._check_risk_tolerance_match(
+            setup, request.risk_tolerance
+        )
+    
+    response = {
+        'asset_type': request.asset_type,
+        'timestamp': datetime.now().isoformat(),
+        'count': len(top_setups),
+        'setups': top_setups,
+        'metadata': {
+            'symbols_analyzed': len(data_dict),
+            'model_version': 'v2.3.1',
+            'risk_tolerance': request.risk_tolerance
+        }
+    }
+    
+    logger.info(f"✅ Returning {len(top_setups)} top setups for {request.asset_type}")
+    
+    return response
+
+
+def _check_risk_tolerance_match(setup: Dict[str, Any], tolerance: str) -> bool:
+    """Check if setup matches user's risk tolerance"""
+    
+    risk_reward = setup.get('risk_metrics', {}).get('risk_reward_ratio', 0)
+    confidence = setup.get('confidence', 0)
+    
+    if tolerance == 'low':
+        return confidence > 0.8 and risk_reward > 2.5
+    elif tolerance == 'high':
+        return confidence > 0.6  # Accept lower confidence for high risk tolerance
+    else:  # medium
+        return confidence > 0.7 and risk_reward > 1.5
 
 
 @app.post("/api/portfolio")
@@ -382,27 +469,29 @@ async def get_leaderboard():
 async def get_metrics_summary():
     """Get overall system metrics"""
     
-    # Check available symbols
+    # Check available symbols from database service
     symbols_with_data = []
-    if FEATURES_DIR.exists():
+    features_dir = db_service.features_dir
+    if features_dir.exists():
         symbols_with_data = [f.stem.replace('_features', '') 
-                            for f in FEATURES_DIR.glob("*_features.csv")]
+                            for f in features_dir.glob("*_features.csv")]
     
     return {
         'system': {
             'status': 'operational',
             'uptime': '99.9%',
-            'last_data_update': datetime.now().isoformat()
+            'last_data_update': datetime.now().isoformat(),
+            'database_type': 'AzureSQL' if db_service.use_azure else 'Local Files'
         },
         'data': {
             'symbols_tracked': len(symbols_with_data),
-            'symbols': symbols_with_data,
+            'symbols': symbols_with_data[:20],  # First 20 for brevity
             'last_fetch': datetime.now().isoformat()
         },
         'models': {
-            'active_models': 5,
-            'avg_confidence': 0.78,
-            'predictions_today': 150
+            'active_models': len(model_service.model_metadata),
+            'loaded_models': len(model_service.loaded_models),
+            'model_types': list(model_service.model_metadata.keys())
         },
         'users': {
             'active_users': 42,
