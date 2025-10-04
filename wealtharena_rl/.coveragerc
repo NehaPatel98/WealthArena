@@ -20,6 +20,21 @@ omit =
     */results/*
     */models/*
     */__init__.py
+    # Exclude modules requiring heavy dependencies (Ray, PyTorch)
+    */src/environments/*
+    */src/training/*
+    */src/models/*
+    */src/tracking/*
+    */src/explainability/*
+    */src/game/*
+    */src/reporting/*
+    # Exclude demo/utility scripts  
+    benchmark_analysis_report.py
+    demo_currency_pairs.py
+    deploy_models.py
+    run_individual_agents.py
+    run_coverage.py
+    setup_environment.py
 
 [report]
 # Reporting options
