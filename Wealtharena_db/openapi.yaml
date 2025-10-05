@@ -1,0 +1,342 @@
+openapi: 3.0.0
+info:
+  title: WealthArena API
+  version: 1.0.0
+  description: Multi-agent investing insights platform
+
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Development server
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        username:
+          type: string
+        risk_profile:
+          type: string
+          enum: [conservative, moderate, aggressive]
+        created_at:
+          type: string
+          format: date-time
+      example:
+        id: "550e8400-e29b-41d4-a716-446655440000"
+        email: "user@wealtharena.com"
+        username: "investor123"
+        risk_profile: "moderate"
+        created_at: "2024-01-15T10:30:00Z"
+
+    Portfolio:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        initial_capital:
+          type: number
+          format: float
+        strategy_type:
+          type: string
+        current_value:
+          type: number
+          format: float
+      example:
+        id: "550e8400-e29b-41d4-a716-446655440001"
+        name: "Retirement Portfolio"
+        initial_capital: 10000.00
+        strategy_type: "conservative"
+        current_value: 10500.50
+
+    Trade:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        symbol:
+          type: string
+        trade_type:
+          type: string
+          enum: [buy, sell]
+        quantity:
+          type: number
+        price:
+          type: number
+      example:
+        id: "550e8400-e29b-41d4-a716-446655440002"
+        symbol: "AAPL"
+        trade_type: "buy"
+        quantity: 10
+        price: 150.25
+
+    MarketData:
+      type: object
+      properties:
+        time:
+          type: string
+          format: date-time
+        symbol:
+          type: string
+        open:
+          type: number
+        high:
+          type: number
+        low:
+          type: number
+        close:
+          type: number
+        volume:
+          type: integer
+      example:
+        time: "2024-01-15T09:30:00Z"
+        symbol: "AAPL"
+        open: 150.00
+        high: 152.50
+        low: 149.80
+        close: 151.25
+        volume: 1000000
+
+paths:
+  # ==================== AUTHENTICATION ENDPOINTS ====================
+  /auth/register:
+    post:
+      summary: Register a new user
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                username:
+                  type: string
+                risk_profile:
+                  type: string
+                  enum: [conservative, moderate, aggressive]
+      responses:
+        201:
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        400:
+          description: Invalid input
+
+  /auth/login:
+    post:
+      summary: User login
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        200:
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  token_type:
+                    type: string
+                    example: bearer
+                  user:
+                    $ref: '#/components/schemas/User'
+        401:
+          description: Invalid credentials
+
+  # ==================== MARKET DATA ENDPOINTS ====================
+  /market/data/{symbol}:
+    get:
+      summary: Get market data for a symbol
+      tags: [Market Data]
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          schema:
+            type: string
+          example: AAPL
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date
+          example: 2024-01-01
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date
+          example: 2024-01-15
+        - name: interval
+          in: query
+          schema:
+            type: string
+            enum: [1min, 5min, 1hour, 1day]
+          example: 1day
+      responses:
+        200:
+          description: Market data retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MarketData'
+
+  # ==================== PORTFOLIO ENDPOINTS ====================
+  /portfolios:
+    get:
+      security: [{bearerAuth: []}]
+      summary: Get user's portfolios
+      tags: [Portfolios]
+      responses:
+        200:
+          description: List of user portfolios
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Portfolio'
+    
+    post:
+      security: [{bearerAuth: []}]
+      summary: Create a new portfolio
+      tags: [Portfolios]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                initial_capital:
+                  type: number
+                strategy_type:
+                  type: string
+      responses:
+        201:
+          description: Portfolio created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Portfolio'
+
+  /portfolios/{portfolio_id}:
+    get:
+      security: [{bearerAuth: []}]
+      summary: Get portfolio details
+      tags: [Portfolios]
+      parameters:
+        - name: portfolio_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: Portfolio details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Portfolio'
+
+  # ==================== TRADING ENDPOINTS ====================
+  /portfolios/{portfolio_id}/trades:
+    get:
+      security: [{bearerAuth: []}]
+      summary: Get portfolio trades
+      tags: [Trading]
+      parameters:
+        - name: portfolio_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: List of trades
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Trade'
+    
+    post:
+      security: [{bearerAuth: []}]
+      summary: Execute a trade
+      tags: [Trading]
+      parameters:
+        - name: portfolio_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                symbol:
+                  type: string
+                trade_type:
+                  type: string
+                  enum: [buy, sell]
+                quantity:
+                  type: number
+                order_type:
+                  type: string
+                  enum: [market, limit]
+                limit_price:
+                  type: number
+      responses:
+        201:
+          description: Trade executed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Trade'
