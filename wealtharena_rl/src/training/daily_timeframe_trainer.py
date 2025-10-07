@@ -234,12 +234,14 @@ class DailyTimeframeTrainer:
         df['Volume_SMA_20'] = df['Volume'].rolling(window=20).mean()
         df['Volume_Ratio'] = df['Volume'] / df['Volume_SMA_20']
         
-        # Fill NaN values
-        df = df.fillna(method='bfill').fillna(method='ffill')
-        
-        # Replace infinite values
+        # Replace infinite values FIRST
         df = df.replace([np.inf, -np.inf], np.nan)
-        df = df.fillna(method='bfill').fillna(method='ffill')
+        
+        # Fill NaN values using ONLY past data (forward fill only - NO FUTURE DATA)
+        df = df.fillna(method='ffill')
+        
+        # For remaining NaN at start, use safe defaults
+        df = df.fillna(0)
         
         return df
     
@@ -327,6 +329,15 @@ class DailyTimeframeTrainer:
             self.test_data[category] = test_data
             
             logger.info(f"Split {category}: Train={len(train_data)}, Val={len(val_data)}, Test={len(test_data)}")
+            
+            # CRITICAL: Check for data leakage
+            try:
+                from .data_leakage_detector import check_data_for_leakage
+                is_safe = check_data_for_leakage(train_data, val_data, test_data)
+                if not is_safe:
+                    logger.error(f"DATA LEAKAGE DETECTED in {category} - Review and fix before training!")
+            except Exception as e:
+                logger.warning(f"Could not run leakage detection: {e}")
     
     def train_instrument_agents(self) -> Dict[str, Any]:
         """Train RL agents for all financial instrument types"""
