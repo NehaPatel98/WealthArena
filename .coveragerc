@@ -1,0 +1,8 @@
+[run]
+source = wealtharena_rl
+branch = True
+
+[report]
+omit =
+    */tests/*
+    */venv/*
