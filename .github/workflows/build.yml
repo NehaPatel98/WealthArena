@@ -1,4 +1,5 @@
 name: Build
+
 on:
   push:
     branches:
@@ -25,11 +26,11 @@ jobs:
 
       - name: SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@v6
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io
         with:
           args: >
             -Dsonar.projectKey=NehaPatel98_WealthArena
             -Dsonar.organization=nehapatel98
             -Dsonar.exclusions=**/*.java
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-
