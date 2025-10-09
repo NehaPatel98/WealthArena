@@ -1,0 +1,75 @@
+[run]
+# Coverage configuration for SonarQube
+# Use relative_files to generate paths from project root for SonarQube
+source = .
+relative_files = True
+omit = 
+    */tests/*
+    */test_*.py
+    */__pycache__/*
+    */venv/*
+    */env/*
+    */.venv/*
+    */site-packages/*
+    setup.py
+    */migrations/*
+    */config/*
+    */docs/*
+    */notebooks/*
+    */data/*
+    */checkpoints/*
+    */logs/*
+    */results/*
+    */models/*
+    */__init__.py
+    # Exclude modules requiring heavy dependencies (Ray, PyTorch)
+    */src/environments/*
+    */src/training/*
+    */src/models/*
+    */src/tracking/*
+    */src/explainability/*
+    */src/game/*
+    */src/reporting/*
+    # Exclude demo/utility scripts  
+    benchmark_analysis_report.py
+    demo_currency_pairs.py
+    deploy_models.py
+    run_individual_agents.py
+    run_coverage.py
+    setup_environment.py
+
+[report]
+# Reporting options
+precision = 2
+show_missing = True
+skip_covered = False
+
+exclude_lines =
+    # Have to re-enable the standard pragma
+    pragma: no cover
+    
+    # Don't complain about missing debug-only code
+    def __repr__
+    def __str__
+    
+    # Don't complain if tests don't hit defensive assertion code
+    raise AssertionError
+    raise NotImplementedError
+    
+    # Don't complain if non-runnable code isn't run
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+    if typing.TYPE_CHECKING:
+    
+    # Don't complain about abstract methods
+    @abstractmethod
+    @abc.abstractmethod
+
+[xml]
+# XML output for SonarQube
+output = coverage.xml
+
+[html]
+# HTML output for local viewing
+directory = htmlcov
+
