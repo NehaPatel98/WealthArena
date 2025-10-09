@@ -1,6 +1,8 @@
 [run]
 # Coverage configuration for SonarQube
+# Use relative_files to generate paths from project root for SonarQube
 source = .
+relative_files = True
 omit = 
     */tests/*
     */test_*.py
