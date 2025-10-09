@@ -297,3 +297,4 @@ def rss_metrics() -> Dict[str, Any]:
     """
     ingest = get_news_ingest()
     return ingest.rss_metrics()
+

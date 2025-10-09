@@ -9,8 +9,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
 from .api.chat import router as chat_router
+from .api.chat_stream import router as chat_stream_router
+from .api.history import router as history_router
+from .api.feedback import router as feedback_router
+from .api.export import router as export_router
+from .api.context import router as context_router
 from .api.metrics import router as metrics_router
+from .api.game import router as game_router
+from .api.game_stream import router as game_stream_router
+from .api.search import router as search_router
+from .api.explain import router as explain_router
+from .api.market import router as market_router
 from .middleware.metrics import MetricsMiddleware
+from .metrics.prom import get_metrics_response
 
 # Load environment variables
 load_dotenv()
@@ -43,7 +54,23 @@ app.add_middleware(MetricsMiddleware)
 
 # Include API routers
 app.include_router(chat_router, prefix="/v1", tags=["chat"])
+app.include_router(chat_stream_router, prefix="/v1", tags=["chat-stream"])
+app.include_router(history_router, prefix="/v1", tags=["chat-history"])
+app.include_router(feedback_router, prefix="/v1", tags=["chat-feedback"])
+app.include_router(export_router, prefix="/v1", tags=["chat-export"])
+app.include_router(context_router, prefix="/v1", tags=["context", "knowledge"])
 app.include_router(metrics_router, prefix="/v1/metrics", tags=["metrics"])
+app.include_router(game_router, prefix="/v1", tags=["game"])
+app.include_router(game_stream_router, prefix="/v1", tags=["game-stream"])
+app.include_router(search_router, prefix="/v1", tags=["search"])
+app.include_router(explain_router, prefix="/v1", tags=["explain"])
+app.include_router(market_router, prefix="/v1", tags=["market"])
+
+# Prometheus metrics endpoint
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint"""
+    return get_metrics_response()
 
 @app.get("/")
 async def root():
