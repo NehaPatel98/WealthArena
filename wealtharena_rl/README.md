@@ -1,170 +1,317 @@
-# WealthArena Multi-Agent RL Trading System
+# WealthArena RL System
 
-## Project Overview
+A comprehensive reinforcement learning platform for multi-asset portfolio management, featuring advanced signal engineering, hierarchical RL agents, risk management, and LLM integration.
 
-WealthArena is a **multi-agent reinforcement learning trading system** that coordinates multiple RL agents across different financial instrument types using hierarchical RL and advanced coordination mechanisms. The system uses RLlib for distributed reinforcement learning and implements sophisticated reward functions, risk management, and signal fusion.
+## 🚀 Features
 
-## Architecture
+### Core Capabilities
+- **Multi-Asset Data Collection**: Dynamic data fetching from exchanges (ASX, NYSE, NASDAQ) and APIs (Yahoo Finance, Alpha Vantage, FRED, CoinGecko)
+- **Advanced Signal Engineering**: 100+ technical indicators, volatility estimators, and fundamental signals
+- **Hierarchical RL Agents**: High-level allocator + low-level execution policies with PPO and SAC algorithms
+- **Offline RL Pretraining**: Conservative Q-Learning (CQL), Batch-Constrained Q-Learning (BCQ), and Behavior Cloning
+- **Multi-Objective Optimization**: Reward shaping balancing return, risk, liquidity, and ESG goals
+- **Covariance-Aware Risk Management**: Dynamic hedging, portfolio optimization, and stress testing
+- **Advanced Backtesting**: Vectorized, walk-forward, and Monte Carlo backtesting engines
+- **LLM Integration**: Event extraction, sentiment analysis, and explainable trade rationales
 
-### RL Agent Types
-- [x] **Stock RL Agent (PPO)**: ASX stock trading with momentum strategies
-- [x] **Crypto RL Agent (SAC)**: High-frequency crypto trading with volatility management
-- [x] **ETF RL Agent (A2C)**: Sector rotation and diversification strategies
-- [x] **Currency RL Agent (DQN)**: Forex trading with carry strategies
-- [x] **REIT RL Agent (PPO)**: Real estate investment trust trading
+### Technical Highlights
+- **Market Microstructure Simulation**: Order book simulation, transaction costs, and latency modeling
+- **Real-time Processing**: Asynchronous data processing and signal generation
+- **Production-Ready**: Docker containerization, Kubernetes deployment, and Azure integration
+- **Comprehensive Monitoring**: Performance metrics, risk attribution, and system health monitoring
 
-### Multi-Agent RL Environment
-- [x] **Hierarchical RL Coordination**: High-level allocator + low-level execution
-- [x] **Signal Fusion**: Weighted, voting, and neural fusion methods
-- [x] **Risk Management**: Integrated position sizing and risk controls
-- [x] **Reward Shaping**: Multi-objective optimization with coordination rewards
-
-### Training Pipeline
-- [x] **Individual Agent Training**: RL agents for each instrument type
-- [x] **Multi-Agent Environment Training**: Coordinated training across agents
-- [x] **Meta Agent Training**: Hierarchical coordination training
-- [x] **Daily Timeframe Optimization**: Optimized for daily trading decisions
-
-## Directory Structure
+## 📁 Project Structure
 
 ```
 wealtharena_rl/
-├── README.md
-├── requirements.txt
-├── config/
-│   └── training_config.yaml
-├── docs/
-│   ├── rl_architecture.md
-│   └── rl_api_specification.md
 ├── src/
-│   ├── environments/
-│   │   ├── __init__.py
-│   │   ├── trading_env.py
-│   │   ├── multi_agent_env.py
-│   │   ├── multi_agent_rl_env.py
-│   │   └── market_simulator.py
-│   ├── models/
-│   │   ├── __init__.py
-│   │   ├── rl_agents.py
-│   │   ├── rl_meta_agent.py
-│   │   ├── trading_networks.py
-│   │   └── custom_policies.py
-│   ├── training/
-│   │   ├── __init__.py
-│   │   ├── daily_timeframe_trainer.py
-│   │   ├── train_multi_agent.py
-│   │   └── evaluation.py
 │   ├── data/
-│   │   ├── __init__.py
-│   │   ├── asx_companies.py
-│   │   ├── data_adapter.py
-│   │   └── market_data.py
-│   ├── utils/
-│   │   ├── __init__.py
-│   │   ├── metrics.py
-│   │   └── visualization.py
-│   └── tracking/
-│       ├── __init__.py
-│       ├── mlflow_tracker.py
-│       └── wandb_tracker.py
-├── experiments/
-│   ├── logs/
-│   ├── checkpoints/
-│   └── results/
-├── tests/
-│   ├── test_environments.py
-│   ├── test_models.py
-│   └── test_training.py
-├── notebooks/
-│   ├── agent_api_specification.ipynb
-│   ├── data_exploration.ipynb
-│   └── performance_analysis.ipynb
-└── docs/
-    ├── agent_api_specification.md
-    ├── technical_architecture.md
-    └── integration_guide.md
+│   │   └── advanced_signal_engineering.py    # Signal generation and processing
+│   ├── simulation/
+│   │   └── market_microstructure.py          # Market simulation and order book
+│   ├── agents/
+│   │   ├── hierarchical_rl_agents.py         # Hierarchical RL system
+│   │   └── offline_rl_pretraining.py         # Offline RL algorithms
+│   ├── optimization/
+│   │   └── multi_objective_optimization.py   # Multi-objective reward shaping
+│   ├── backtesting/
+│   │   └── advanced_backtesting.py           # Backtesting engines
+│   ├── risk/
+│   │   └── covariance_aware_risk.py          # Risk management and hedging
+│   ├── llm/
+│   │   └── llm_integration.py                # LLM integration and NLP
+│   └── integration/
+│       └── wealtharena_rl_system.py          # Main system integration
+├── config/
+│   └── wealtharena_config.yaml              # System configuration
+├── data_collection_for_training.py          # Enhanced data collection
+├── requirements.txt                         # Python dependencies
+└── README.md                               # This file
 ```
 
-## Quick Start
+## 🛠️ Installation
 
-### 1. Install Dependencies
+### Prerequisites
+- Python 3.8+
+- CUDA-capable GPU (optional, for accelerated training)
+- 8GB+ RAM recommended
+
+### Quick Start
+
+1. **Clone the repository**
+```bash
+git clone <repository-url>
+cd wealtharena_rl
+```
+
+2. **Install dependencies**
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Train Individual RL Agents
-```python
-from src.models.rl_agents import RLAgentFactory
-
-# Create and train RL agents
-for instrument_type in ["stocks", "crypto", "etf", "currencies", "reits"]:
-    agent = RLAgentFactory.create_agent(instrument_type)
-    results = agent.train(training_data, num_iterations=1000)
-    print(f"{instrument_type} agent trained: final reward = {results['final_reward']:.4f}")
-```
-
-### 3. Multi-Agent RL Environment
-```python
-from src.environments.multi_agent_rl_env import WealthArenaMultiAgentRLEnv
-
-# Create multi-agent environment
-env = WealthArenaMultiAgentRLEnv(config)
-
-# Train agents in environment
-obs, info = env.reset()
-for step in range(1000):
-    actions = {agent_id: env.action_space.sample() for agent_id in env.agent_ids}
-    obs, rewards, terminateds, truncateds, infos = env.step(actions)
-```
-
-### 4. RL Meta Agent
-```python
-from src.models.rl_meta_agent import RLMetaAgent, RLMetaAgentConfig
-
-# Create meta agent
-config = RLMetaAgentConfig(
-    coordination_method="hierarchical",
-    fusion_method="weighted",
-    agent_weights={"stocks": 0.3, "crypto": 0.2, "etf": 0.2, "currencies": 0.2, "reits": 0.1}
-)
-meta_agent = RLMetaAgent(config)
-
-# Train meta agent
-results = meta_agent.train_meta_agent(training_data)
-
-# Generate trading signals
-signals = meta_agent.generate_signals(market_data)
-print(f"Trading decision: {signals['trading_decision']}")
-```
-
-### 5. Full Training Pipeline
+3. **Configure the system**
 ```bash
-# Train RL agents
-python train_wealtharena_system.py --train-models-only
-
-# Run full RL system
-python train_wealtharena_system.py --config config/training_config.yaml
+cp config/wealtharena_config.yaml.example config/wealtharena_config.yaml
+# Edit the configuration file with your API keys and preferences
 ```
 
-## Key Features
+4. **Run the system**
+```bash
+python src/integration/wealtharena_rl_system.py
+```
 
-- **Multi-Agent RL**: Multiple RL agents with different strategies (PPO, SAC, A2C, DQN)
-- **Hierarchical RL**: High-level allocator + low-level execution policies
-- **Signal Fusion**: Weighted, voting, and neural fusion methods
-- **Risk Management**: Integrated position sizing and risk controls
-- **Reward Shaping**: Multi-objective optimization with coordination rewards
-- **Daily Timeframe**: Optimized for daily trading decisions
-- **ASX Integration**: Comprehensive ASX stock data and company information
-- **Experiment Tracking**: MLflow and Weights & Biases integration
+### Docker Deployment
 
-## RL Algorithms
+1. **Build the container**
+```bash
+docker build -t wealtharena-rl .
+```
 
-- **PPO (Proximal Policy Optimization)**: Stock and REIT agents
-- **SAC (Soft Actor-Critic)**: Crypto agent for continuous actions
-- **A2C (Advantage Actor-Critic)**: ETF agent for faster convergence
-- **DQN (Deep Q-Network)**: Currency agent for discrete actions
+2. **Run the container**
+```bash
+docker run -p 8000:8000 wealtharena-rl
+```
 
-## Documentation
+## 🔧 Configuration
 
-- [RL Architecture](docs/rl_architecture.md)
-- [RL API Specification](docs/rl_api_specification.md)
+The system is configured via `config/wealtharena_config.yaml`. Key configuration options:
+
+### Data Sources
+```yaml
+data_sources:
+  - yahoo_finance
+  - alpha_vantage
+  - fred
+  - coingecko
+
+asset_types:
+  - stocks
+  - etfs
+  - crypto
+  - forex
+  - commodities
+
+exchanges:
+  - ASX
+  - NYSE
+  - NASDAQ
+```
+
+### RL Agents
+```yaml
+agent_configs:
+  allocator:
+    state_dim: 50
+    action_dim: 10
+    hidden_dims: [256, 128, 64]
+    learning_rate: 0.0001
+```
+
+### Risk Management
+```yaml
+risk_config:
+  covariance_method: "ledoit_wolf"
+  optimization_method: "risk_parity"
+  rebalance_frequency: "monthly"
+  min_weight: 0.0
+  max_weight: 0.1
+```
+
+## 📊 Usage Examples
+
+### Data Collection
+```python
+from data_collection_for_training import MultiAssetDataCollector
+
+# Collect data for all asset types from all exchanges
+collector = MultiAssetDataCollector({
+    "asset_types": ["stocks", "crypto", "forex"],
+    "exchanges": ["ASX", "NYSE", "NASDAQ"],
+    "start_date": "2020-01-01",
+    "end_date": "2024-12-31"
+})
+
+# Run data collection
+collector.collect_all_data()
+```
+
+### Signal Engineering
+```python
+from src.data.advanced_signal_engineering import AdvancedSignalEngine
+
+# Initialize signal engine
+signal_engine = AdvancedSignalEngine({"lookback_period": 252})
+
+# Generate signals for market data
+signals = signal_engine.generate_all_signals(market_data, "AAPL")
+```
+
+### RL Agent Training
+```python
+from src.agents.hierarchical_rl_agents import HierarchicalRLSystem
+
+# Initialize RL system
+rl_system = HierarchicalRLSystem({
+    "allocator_state_dim": 50,
+    "executor_state_dim": 20,
+    "assets": ["AAPL", "GOOGL", "MSFT"]
+})
+
+# Train agents
+rl_system.train_agents(market_data, signals)
+```
+
+### Risk Management
+```python
+from src.risk.covariance_aware_risk import CovarianceAwareRiskManager
+
+# Initialize risk manager
+risk_manager = CovarianceAwareRiskManager(risk_config)
+
+# Manage portfolio risk
+risk_results = risk_manager.manage_portfolio_risk(returns_data, portfolio_weights)
+```
+
+### Backtesting
+```python
+from src.backtesting.advanced_backtesting import VectorizedBacktester
+
+# Initialize backtester
+backtester = VectorizedBacktester(backtest_config)
+
+# Run backtest
+results = backtester.run_backtest(market_data, strategy_function)
+```
+
+## 🧪 Testing
+
+Run the test suite:
+```bash
+pytest tests/
+```
+
+Run specific test categories:
+```bash
+pytest tests/test_agents.py          # RL agent tests
+pytest tests/test_backtesting.py     # Backtesting tests
+pytest tests/test_risk_management.py # Risk management tests
+```
+
+## 📈 Performance Monitoring
+
+The system provides comprehensive performance monitoring:
+
+- **Real-time Metrics**: Portfolio performance, risk metrics, and agent performance
+- **Risk Attribution**: Factor decomposition and risk contribution analysis
+- **Backtesting Results**: Historical performance analysis with confidence intervals
+- **LLM Insights**: Sentiment analysis and event impact assessment
+
+## 🔒 Security & Compliance
+
+- **Data Encryption**: All sensitive data encrypted at rest and in transit
+- **API Key Management**: Secure storage and rotation of API keys
+- **Audit Logging**: Comprehensive logging for compliance and debugging
+- **Access Control**: Role-based access control for different user types
+
+## 🚀 Deployment
+
+### Azure Deployment
+
+1. **Create Azure resources**
+```bash
+az group create --name wealtharena-rg --location eastus
+az acr create --resource-group wealtharena-rg --name wealtharenaregistry --sku Basic
+```
+
+2. **Deploy with Kubernetes**
+```bash
+kubectl apply -f k8s/
+```
+
+### Local Development
+
+1. **Start development environment**
+```bash
+docker-compose up -d
+```
+
+2. **Access services**
+- API: http://localhost:8000
+- Monitoring: http://localhost:3000
+- Database: localhost:5432
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📝 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- **Stable Baselines3** for RL algorithms
+- **TA-Lib** for technical analysis
+- **Hugging Face** for transformer models
+- **OpenAI** for LLM integration
+- **Yahoo Finance** for market data
+
+## 📞 Support
+
+For support and questions:
+- Create an issue on GitHub
+- Email: support@wealtharena.com
+- Documentation: https://docs.wealtharena.com
+
+## 🔮 Roadmap
+
+### Phase 1 (Completed)
+- ✅ Multi-asset data collection
+- ✅ Advanced signal engineering
+- ✅ Hierarchical RL agents
+- ✅ Offline RL pretraining
+- ✅ Multi-objective optimization
+- ✅ Risk management
+- ✅ Advanced backtesting
+- ✅ LLM integration
+
+### Phase 2 (In Progress)
+- 🔄 Production deployment
+- 🔄 Real-time streaming
+- 🔄 Web dashboard
+- 🔄 User authentication
+- 🔄 Tournament system
+
+### Phase 3 (Planned)
+- 📋 Mobile app
+- 📋 Advanced analytics
+- 📋 Social trading features
+- 📋 Regulatory compliance tools
+
+---
+
+**WealthArena RL System** - Empowering intelligent portfolio management through reinforcement learning.

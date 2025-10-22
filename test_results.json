@@ -1,0 +1,101 @@
+{
+  "timestamp": "2025-09-25T11:42:20.852337",
+  "tests": {
+    "imports": {
+      "status": "pass",
+      "total_modules": 8,
+      "available_modules": 8,
+      "missing_critical": [],
+      "results": [
+        {
+          "module": "numpy",
+          "status": "available"
+        },
+        {
+          "module": "pandas",
+          "status": "available"
+        },
+        {
+          "module": "gymnasium",
+          "status": "available"
+        },
+        {
+          "module": "ray",
+          "status": "available"
+        },
+        {
+          "module": "yfinance",
+          "status": "available"
+        },
+        {
+          "module": "sklearn",
+          "status": "available"
+        },
+        {
+          "module": "matplotlib",
+          "status": "available"
+        },
+        {
+          "module": "seaborn",
+          "status": "available"
+        }
+      ]
+    },
+    "environment_creation": {
+      "status": "fail",
+      "error": "'Close'",
+      "traceback": "Traceback (most recent call last):\n  File \"C:\\Users\\PC\\Desktop\\AIP Project Folder\\Lead RL Engineer (Group Member 1)\\Workspace\\wealtharena_rllib\\.venv\\Lib\\site-packages\\pandas\\core\\indexes\\base.py\", line 3812, in get_loc\n    return self._engine.get_loc(casted_key)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"pandas/_libs/index.pyx\", line 167, in pandas._libs.index.IndexEngine.get_loc\n  File \"pandas/_libs/index.pyx\", line 196, in pandas._libs.index.IndexEngine.get_loc\n  File \"pandas/_libs/hashtable_class_helper.pxi\", line 7088, in pandas._libs.hashtable.PyObjectHashTable.get_item\n  File \"pandas/_libs/hashtable_class_helper.pxi\", line 7096, in pandas._libs.hashtable.PyObjectHashTable.get_item\nKeyError: 'Close'\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"C:\\Users\\PC\\Desktop\\AIP Project Folder\\Lead RL Engineer (Group Member 1)\\Workspace\\wealtharena_rllib\\wealtharena_rl\\test_system.py\", line 101, in test_environment_creation\n    env = WealthArenaTradingEnv(config)\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\PC\\Desktop\\AIP Project Folder\\Lead RL Engineer (Group Member 1)\\Workspace\\wealtharena_rllib\\wealtharena_rl\\src\\environments\\trading_env.py\", line 103, in __init__\n    self.reset()\n  File \"C:\\Users\\PC\\Desktop\\AIP Project Folder\\Lead RL Engineer (Group Member 1)\\Workspace\\wealtharena_rllib\\wealtharena_rl\\src\\environments\\trading_env.py\", line 287, in reset\n    observation = self._get_observation()\n                  ^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\PC\\Desktop\\AIP Project Folder\\Lead RL Engineer (Group Member 1)\\Workspace\\wealtharena_rllib\\wealtharena_rl\\src\\environments\\trading_env.py\", line 548, in _get_observation\n    portfolio_features = self._get_portfolio_features()\n                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\PC\\Desktop\\AIP Project Folder\\Lead RL Engineer (Group Member 1)\\Workspace\\wealtharena_rllib\\wealtharena_rl\\src\\environments\\trading_env.py\", line 618, in _get_portfolio_features\n    current_prices = self._get_current_prices()\n                     ^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\PC\\Desktop\\AIP Project Folder\\Lead RL Engineer (Group Member 1)\\Workspace\\wealtharena_rllib\\wealtharena_rl\\src\\environments\\trading_env.py\", line 382, in _get_current_prices\n    return current_data[\"Close\"].values\n           ~~~~~~~~~~~~^^^^^^^^^\n  File \"C:\\Users\\PC\\Desktop\\AIP Project Folder\\Lead RL Engineer (Group Member 1)\\Workspace\\wealtharena_rllib\\.venv\\Lib\\site-packages\\pandas\\core\\series.py\", line 1130, in __getitem__\n    return self._get_value(key)\n           ^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\PC\\Desktop\\AIP Project Folder\\Lead RL Engineer (Group Member 1)\\Workspace\\wealtharena_rllib\\.venv\\Lib\\site-packages\\pandas\\core\\series.py\", line 1246, in _get_value\n    loc = self.index.get_loc(label)\n          ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\PC\\Desktop\\AIP Project Folder\\Lead RL Engineer (Group Member 1)\\Workspace\\wealtharena_rllib\\.venv\\Lib\\site-packages\\pandas\\core\\indexes\\multi.py\", line 3059, in get_loc\n    loc = self._get_level_indexer(key, level=0)\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\PC\\Desktop\\AIP Project Folder\\Lead RL Engineer (Group Member 1)\\Workspace\\wealtharena_rllib\\.venv\\Lib\\site-packages\\pandas\\core\\indexes\\multi.py\", line 3410, in _get_level_indexer\n    idx = self._get_loc_single_level_index(level_index, key)\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\PC\\Desktop\\AIP Project Folder\\Lead RL Engineer (Group Member 1)\\Workspace\\wealtharena_rllib\\.venv\\Lib\\site-packages\\pandas\\core\\indexes\\multi.py\", line 2999, in _get_loc_single_level_index\n    return level_index.get_loc(key)\n           ^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\PC\\Desktop\\AIP Project Folder\\Lead RL Engineer (Group Member 1)\\Workspace\\wealtharena_rllib\\.venv\\Lib\\site-packages\\pandas\\core\\indexes\\base.py\", line 3819, in get_loc\n    raise KeyError(key) from err\nKeyError: 'Close'\n"
+    },
+    "portfolio_management": {
+      "status": "pass",
+      "portfolio_value": 100323.33333333333,
+      "metrics_keys": []
+    },
+    "data_adapter": {
+      "status": "pass",
+      "data_shape": [
+        5,
+        7
+      ],
+      "data_columns": [
+        "Open",
+        "High",
+        "Low",
+        "Close",
+        "Volume",
+        "Dividends",
+        "Stock Splits"
+      ]
+    },
+    "multi_agent_environment": {
+      "status": "fail",
+      "error": "property 'num_agents' of 'WealthArenaMultiAgentEnv' object has no setter",
+      "traceback": "Traceback (most recent call last):\n  File \"C:\\Users\\PC\\Desktop\\AIP Project Folder\\Lead RL Engineer (Group Member 1)\\Workspace\\wealtharena_rllib\\wealtharena_rl\\test_system.py\", line 228, in test_multi_agent_environment\n    env = WealthArenaMultiAgentEnv(config)\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\PC\\Desktop\\AIP Project Folder\\Lead RL Engineer (Group Member 1)\\Workspace\\wealtharena_rllib\\wealtharena_rl\\src\\environments\\multi_agent_env.py\", line 39, in __init__\n    self.num_agents = self.config.get(\"num_agents\", 3)\n    ^^^^^^^^^^^^^^^\nAttributeError: property 'num_agents' of 'WealthArenaMultiAgentEnv' object has no setter\n"
+    },
+    "training_pipeline": {
+      "status": "fail",
+      "error": "No module named 'ray.rllib.algorithms.a2c'",
+      "traceback": "Traceback (most recent call last):\n  File \"C:\\Users\\PC\\Desktop\\AIP Project Folder\\Lead RL Engineer (Group Member 1)\\Workspace\\wealtharena_rllib\\wealtharena_rl\\test_system.py\", line 261, in test_training_pipeline\n    from training.train_agents import AdvancedTradingTrainer\n  File \"C:\\Users\\PC\\Desktop\\AIP Project Folder\\Lead RL Engineer (Group Member 1)\\Workspace\\wealtharena_rllib\\wealtharena_rl\\src\\training\\__init__.py\", line 8, in <module>\n    from .train_multi_agent import MultiAgentTrainer, train_multi_agent\n  File \"C:\\Users\\PC\\Desktop\\AIP Project Folder\\Lead RL Engineer (Group Member 1)\\Workspace\\wealtharena_rllib\\wealtharena_rl\\src\\training\\train_multi_agent.py\", line 11, in <module>\n    from ray.rllib.algorithms.a2c import A2C\nModuleNotFoundError: No module named 'ray.rllib.algorithms.a2c'\n"
+    },
+    "data_download": {
+      "status": "pass",
+      "downloaded_symbols": 2,
+      "symbols": [
+        "AAPL",
+        "GOOGL"
+      ]
+    },
+    "performance_optimization": {
+      "status": "fail",
+      "error": "'Close'",
+      "traceback": "Traceback (most recent call last):\n  File \"C:\\Users\\PC\\Desktop\\AIP Project Folder\\Lead RL Engineer (Group Member 1)\\Workspace\\wealtharena_rllib\\.venv\\Lib\\site-packages\\pandas\\core\\indexes\\base.py\", line 3812, in get_loc\n    return self._engine.get_loc(casted_key)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"pandas/_libs/index.pyx\", line 167, in pandas._libs.index.IndexEngine.get_loc\n  File \"pandas/_libs/index.pyx\", line 196, in pandas._libs.index.IndexEngine.get_loc\n  File \"pandas/_libs/hashtable_class_helper.pxi\", line 7088, in pandas._libs.hashtable.PyObjectHashTable.get_item\n  File \"pandas/_libs/hashtable_class_helper.pxi\", line 7096, in pandas._libs.hashtable.PyObjectHashTable.get_item\nKeyError: 'Close'\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"C:\\Users\\PC\\Desktop\\AIP Project Folder\\Lead RL Engineer (Group Member 1)\\Workspace\\wealtharena_rllib\\wealtharena_rl\\test_system.py\", line 351, in test_performance_optimization\n    env = WealthArenaTradingEnv(config)\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\PC\\Desktop\\AIP Project Folder\\Lead RL Engineer (Group Member 1)\\Workspace\\wealtharena_rllib\\wealtharena_rl\\src\\environments\\trading_env.py\", line 103, in __init__\n    self.reset()\n  File \"C:\\Users\\PC\\Desktop\\AIP Project Folder\\Lead RL Engineer (Group Member 1)\\Workspace\\wealtharena_rllib\\wealtharena_rl\\src\\environments\\trading_env.py\", line 287, in reset\n    observation = self._get_observation()\n                  ^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\PC\\Desktop\\AIP Project Folder\\Lead RL Engineer (Group Member 1)\\Workspace\\wealtharena_rllib\\wealtharena_rl\\src\\environments\\trading_env.py\", line 548, in _get_observation\n    portfolio_features = self._get_portfolio_features()\n                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\PC\\Desktop\\AIP Project Folder\\Lead RL Engineer (Group Member 1)\\Workspace\\wealtharena_rllib\\wealtharena_rl\\src\\environments\\trading_env.py\", line 618, in _get_portfolio_features\n    current_prices = self._get_current_prices()\n                     ^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\PC\\Desktop\\AIP Project Folder\\Lead RL Engineer (Group Member 1)\\Workspace\\wealtharena_rllib\\wealtharena_rl\\src\\environments\\trading_env.py\", line 382, in _get_current_prices\n    return current_data[\"Close\"].values\n           ~~~~~~~~~~~~^^^^^^^^^\n  File \"C:\\Users\\PC\\Desktop\\AIP Project Folder\\Lead RL Engineer (Group Member 1)\\Workspace\\wealtharena_rllib\\.venv\\Lib\\site-packages\\pandas\\core\\series.py\", line 1130, in __getitem__\n    return self._get_value(key)\n           ^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\PC\\Desktop\\AIP Project Folder\\Lead RL Engineer (Group Member 1)\\Workspace\\wealtharena_rllib\\.venv\\Lib\\site-packages\\pandas\\core\\series.py\", line 1246, in _get_value\n    loc = self.index.get_loc(label)\n          ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\PC\\Desktop\\AIP Project Folder\\Lead RL Engineer (Group Member 1)\\Workspace\\wealtharena_rllib\\.venv\\Lib\\site-packages\\pandas\\core\\indexes\\multi.py\", line 3059, in get_loc\n    loc = self._get_level_indexer(key, level=0)\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\PC\\Desktop\\AIP Project Folder\\Lead RL Engineer (Group Member 1)\\Workspace\\wealtharena_rllib\\.venv\\Lib\\site-packages\\pandas\\core\\indexes\\multi.py\", line 3410, in _get_level_indexer\n    idx = self._get_loc_single_level_index(level_index, key)\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\PC\\Desktop\\AIP Project Folder\\Lead RL Engineer (Group Member 1)\\Workspace\\wealtharena_rllib\\.venv\\Lib\\site-packages\\pandas\\core\\indexes\\multi.py\", line 2999, in _get_loc_single_level_index\n    return level_index.get_loc(key)\n           ^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\PC\\Desktop\\AIP Project Folder\\Lead RL Engineer (Group Member 1)\\Workspace\\wealtharena_rllib\\.venv\\Lib\\site-packages\\pandas\\core\\indexes\\base.py\", line 3819, in get_loc\n    raise KeyError(key) from err\nKeyError: 'Close'\n"
+    }
+  },
+  "overall_status": "failed",
+  "summary": {
+    "total_tests": 8,
+    "passed_tests": 4,
+    "failed_tests": 4,
+    "success_rate": 50.0
+  }
+}

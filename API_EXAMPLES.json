@@ -1,0 +1,513 @@
+{
+  "api_examples": {
+    "1_market_data": {
+      "endpoint": "POST /api/market-data",
+      "request": {
+        "symbols": ["AAPL", "GOOGL"],
+        "days": 30
+      },
+      "response": {
+        "symbols": ["AAPL", "GOOGL"],
+        "days": 30,
+        "timestamp": "2025-10-08T10:30:00.123456",
+        "data": {
+          "AAPL": {
+            "latest_price": 178.45,
+            "records": 30,
+            "columns": ["Date", "Open", "High", "Low", "Close", "Volume"],
+            "data": [
+              {
+                "Date": "2025-10-08",
+                "Open": 175.20,
+                "High": 178.90,
+                "Low": 174.85,
+                "Close": 178.45,
+                "Volume": 52847392
+              }
+            ]
+          }
+        }
+      }
+    },
+    
+    "2_prediction_with_tp_sl": {
+      "endpoint": "POST /api/predictions",
+      "request": {
+        "symbol": "AAPL",
+        "horizon": 1
+      },
+      "response": {
+        "symbol": "AAPL",
+        "asset_type": "stock",
+        "signal": "BUY",
+        "confidence": 0.87,
+        "timestamp": "2025-10-08T10:30:00.123456",
+        
+        "entry": {
+          "price": 178.45,
+          "range": [177.91, 178.99],
+          "timing": "immediate"
+        },
+        
+        "take_profit": [
+          {
+            "level": 1,
+            "price": 182.30,
+            "percent": 2.16,
+            "close_percent": 50,
+            "probability": 0.75
+          },
+          {
+            "level": 2,
+            "price": 186.15,
+            "percent": 4.31,
+            "close_percent": 30,
+            "probability": 0.55
+          },
+          {
+            "level": 3,
+            "price": 190.00,
+            "percent": 6.47,
+            "close_percent": 20,
+            "probability": 0.35
+          }
+        ],
+        
+        "stop_loss": {
+          "price": 175.89,
+          "percent": -1.43,
+          "type": "trailing",
+          "trail_amount": 1.28
+        },
+        
+        "risk_metrics": {
+          "risk_reward_ratio": 3.02,
+          "max_risk_per_share": 2.56,
+          "max_reward_per_share": 7.73,
+          "win_probability": 0.74,
+          "expected_value": 5.05
+        },
+        
+        "position_sizing": {
+          "recommended_percent": 5.2,
+          "dollar_amount": 5200.00,
+          "method": "Kelly Criterion + Volatility Adjusted",
+          "max_risk_percent": 2.6,
+          "confidence_factor": 0.87,
+          "volatility_factor": 0.023
+        },
+        
+        "indicators": {
+          "rsi": {
+            "value": 58.42,
+            "status": "neutral-bearish"
+          },
+          "macd": {
+            "value": 0.87,
+            "status": "bullish"
+          },
+          "volatility": {
+            "value": 0.023,
+            "status": "medium"
+          },
+          "volume": {
+            "status": "high"
+          },
+          "trend": {
+            "direction": "up",
+            "strength": "strong"
+          }
+        },
+        
+        "chart_data": [
+          {
+            "date": "2025-09-08",
+            "open": 172.50,
+            "high": 174.20,
+            "low": 171.80,
+            "close": 173.90,
+            "volume": 48392847
+          }
+        ],
+        
+        "model_version": "v2.3.1",
+        "model_type": "stock",
+        "reasoning": "Model confidence: 87%. Bullish signals detected with favorable risk/reward setup."
+      }
+    },
+    
+    "3_top_trading_setups": {
+      "endpoint": "POST /api/top-setups",
+      "request": {
+        "asset_type": "stocks",
+        "count": 3,
+        "risk_tolerance": "medium"
+      },
+      "response": {
+        "asset_type": "stocks",
+        "timestamp": "2025-10-08T10:30:00.123456",
+        "count": 3,
+        "setups": [
+          {
+            "rank": 1,
+            "symbol": "NVDA",
+            "asset_type": "stocks",
+            "signal": "BUY",
+            "confidence": 0.92,
+            "ranking_score": 0.8745,
+            
+            "entry": {
+              "price": 458.75,
+              "range": [457.37, 460.13],
+              "timing": "immediate"
+            },
+            
+            "take_profit": [
+              {"level": 1, "price": 472.50, "percent": 3.00, "close_percent": 50, "probability": 0.80},
+              {"level": 2, "price": 486.25, "percent": 6.00, "close_percent": 30, "probability": 0.62},
+              {"level": 3, "price": 500.00, "percent": 9.00, "close_percent": 20, "probability": 0.42}
+            ],
+            
+            "stop_loss": {
+              "price": 450.00,
+              "percent": -1.91,
+              "type": "trailing",
+              "trail_amount": 4.37
+            },
+            
+            "risk_metrics": {
+              "risk_reward_ratio": 3.58,
+              "max_risk_per_share": 8.75,
+              "max_reward_per_share": 31.31,
+              "win_probability": 0.78,
+              "expected_value": 22.51
+            },
+            
+            "position_sizing": {
+              "recommended_percent": 6.8,
+              "dollar_amount": 6800.00,
+              "method": "Kelly Criterion + Volatility Adjusted",
+              "max_risk_percent": 3.4,
+              "confidence_factor": 0.92,
+              "volatility_factor": 0.028
+            },
+            
+            "indicators": {
+              "rsi": {"value": 62.15, "status": "neutral-bearish"},
+              "macd": {"value": 1.23, "status": "bullish"},
+              "volatility": {"value": 0.028, "status": "medium"},
+              "volume": {"status": "high"},
+              "trend": {"direction": "up", "strength": "strong"}
+            },
+            
+            "model_version": "v2.3.1",
+            "reasoning": "Strong momentum with favorable R/R. High model confidence.",
+            "risk_tolerance_match": true
+          },
+          {
+            "rank": 2,
+            "symbol": "TSLA",
+            "signal": "BUY",
+            "confidence": 0.84,
+            "ranking_score": 0.8231
+          },
+          {
+            "rank": 3,
+            "symbol": "AMD",
+            "signal": "BUY",
+            "confidence": 0.79,
+            "ranking_score": 0.7892
+          }
+        ],
+        "metadata": {
+          "symbols_analyzed": 32,
+          "model_version": "v2.3.1",
+          "risk_tolerance": "medium"
+        }
+      }
+    },
+    
+    "4_portfolio_analytics": {
+      "endpoint": "POST /api/portfolio",
+      "request": {
+        "symbols": ["AAPL", "GOOGL", "NVDA", "TSLA"],
+        "weights": [0.3, 0.25, 0.25, 0.2]
+      },
+      "response": {
+        "portfolio": {
+          "symbols": ["AAPL", "GOOGL", "NVDA", "TSLA"],
+          "weights": [0.3, 0.25, 0.25, 0.2],
+          "holdings": [
+            {
+              "symbol": "AAPL",
+              "weight": 30.0,
+              "current_price": 178.45,
+              "allocation": "30.0%"
+            },
+            {
+              "symbol": "GOOGL",
+              "weight": 25.0,
+              "current_price": 142.35,
+              "allocation": "25.0%"
+            },
+            {
+              "symbol": "NVDA",
+              "weight": 25.0,
+              "current_price": 458.75,
+              "allocation": "25.0%"
+            },
+            {
+              "symbol": "TSLA",
+              "weight": 20.0,
+              "current_price": 242.18,
+              "allocation": "20.0%"
+            }
+          ]
+        },
+        
+        "metrics": {
+          "total_return": 12.45,
+          "annualized_return": 24.32,
+          "volatility": 18.75,
+          "sharpe_ratio": 1.30,
+          "max_drawdown": -8.42,
+          "period_days": 30,
+          "timestamp": "2025-10-08T10:30:00.123456"
+        },
+        
+        "recommendations": {
+          "rebalance_needed": false,
+          "risk_level": "Moderate",
+          "diversification_score": 40
+        },
+        
+        "timestamp": "2025-10-08T10:30:00.123456"
+      }
+    },
+    
+    "5_game_leaderboard": {
+      "endpoint": "GET /api/game/leaderboard",
+      "response": {
+        "leaderboard": [
+          {
+            "rank": 1,
+            "username": "TradingPro",
+            "score": 25.4,
+            "sharpe": 2.1,
+            "games": 15
+          },
+          {
+            "rank": 2,
+            "username": "RL_Master",
+            "score": 22.8,
+            "sharpe": 1.9,
+            "games": 12
+          },
+          {
+            "rank": 3,
+            "username": "QuanTitan",
+            "score": 21.5,
+            "sharpe": 1.8,
+            "games": 20
+          }
+        ],
+        "period": "all_time",
+        "last_updated": "2025-10-08T10:30:00.123456"
+      }
+    },
+    
+    "6_chat_rag": {
+      "endpoint": "POST /api/chat",
+      "request": {
+        "message": "Should I buy AAPL now?",
+        "context": {
+          "portfolio": ["GOOGL", "MSFT"],
+          "risk_tolerance": "medium"
+        }
+      },
+      "response": {
+        "query": "Should I buy AAPL now?",
+        "response": {
+          "answer": "Based on current market analysis, our RL models suggest considering stocks with strong momentum and positive technical indicators. Always ensure proper diversification and risk management.",
+          "confidence": 0.85,
+          "sources": ["Technical Analysis", "Model Predictions", "Risk Assessment"]
+        },
+        "timestamp": "2025-10-08T10:30:00.123456",
+        "model": "WealthArena RAG v1.0"
+      }
+    },
+    
+    "7_system_metrics": {
+      "endpoint": "GET /api/metrics/summary",
+      "response": {
+        "system": {
+          "status": "operational",
+          "uptime": "99.9%",
+          "last_data_update": "2025-10-08T10:30:00.123456",
+          "database_type": "AzureSQL"
+        },
+        
+        "data": {
+          "symbols_tracked": 125,
+          "symbols": ["AAPL", "GOOGL", "NVDA", "TSLA", "AMD"],
+          "last_fetch": "2025-10-08T18:00:00.000000"
+        },
+        
+        "models": {
+          "active_models": 5,
+          "loaded_models": 5,
+          "model_types": ["asx_stocks", "currency_pairs", "commodities", "cryptocurrencies", "etf"]
+        },
+        
+        "users": {
+          "active_users": 42,
+          "games_in_progress": 8
+        }
+      }
+    },
+    
+    "8_health_check": {
+      "endpoint": "GET /health",
+      "response": {
+        "status": "healthy",
+        "timestamp": "2025-10-08T10:30:00.123456",
+        "database": "connected",
+        "model_service": "ready"
+      }
+    }
+  },
+  
+  "database_schemas": {
+    "raw_market_data": {
+      "columns": [
+        "id", "symbol", "asset_type", "date",
+        "open_price", "high_price", "low_price", "close_price", "volume",
+        "created_at", "updated_at"
+      ],
+      "sample": {
+        "id": 1,
+        "symbol": "AAPL",
+        "asset_type": "stock",
+        "date": "2025-10-08",
+        "open_price": 175.20,
+        "high_price": 178.90,
+        "low_price": 174.85,
+        "close_price": 178.45,
+        "volume": 52847392,
+        "created_at": "2025-10-08T18:00:00",
+        "updated_at": "2025-10-08T18:00:00"
+      }
+    },
+    
+    "processed_features": {
+      "columns": [
+        "id", "symbol", "date",
+        "returns", "log_returns", "volatility_5", "volatility_20",
+        "sma_5", "sma_10", "sma_20", "sma_50", "sma_200",
+        "ema_12", "ema_26", "ema_50",
+        "rsi", "rsi_6", "rsi_21",
+        "macd", "macd_signal", "macd_hist",
+        "bb_upper", "bb_middle", "bb_lower", "bb_width", "bb_position",
+        "atr", "obv",
+        "momentum_5", "momentum_10", "momentum_20",
+        "volume_sma_20", "volume_ratio",
+        "support_20", "resistance_20", "price_position",
+        "processed_at"
+      ],
+      "sample": {
+        "id": 1,
+        "symbol": "AAPL",
+        "date": "2025-10-08",
+        "returns": 0.0182,
+        "log_returns": 0.0180,
+        "volatility_5": 0.0234,
+        "volatility_20": 0.0198,
+        "sma_20": 176.45,
+        "rsi": 58.42,
+        "macd": 0.87,
+        "bb_upper": 182.30,
+        "bb_lower": 170.60,
+        "volume_ratio": 1.15
+      }
+    },
+    
+    "model_predictions": {
+      "columns": [
+        "id", "symbol", "asset_type", "prediction_date",
+        "signal", "confidence",
+        "entry_price", "entry_price_min", "entry_price_max", "entry_timing",
+        "tp1_price", "tp1_percent", "tp1_close_percent", "tp1_probability",
+        "tp2_price", "tp2_percent", "tp2_close_percent", "tp2_probability",
+        "tp3_price", "tp3_percent", "tp3_close_percent", "tp3_probability",
+        "sl_price", "sl_percent", "sl_type", "sl_trail_amount",
+        "risk_reward_ratio", "max_risk_per_share", "max_reward_per_share",
+        "win_probability", "expected_value",
+        "recommended_position_percent", "recommended_dollar_amount", "max_risk_percent",
+        "model_version", "model_type", "reasoning", "ranking_score"
+      ],
+      "sample": {
+        "id": 1,
+        "symbol": "AAPL",
+        "asset_type": "stock",
+        "prediction_date": "2025-10-08T10:30:00",
+        "signal": "BUY",
+        "confidence": 0.87,
+        "entry_price": 178.45,
+        "tp1_price": 182.30,
+        "tp2_price": 186.15,
+        "tp3_price": 190.00,
+        "sl_price": 175.89,
+        "risk_reward_ratio": 3.02,
+        "recommended_position_percent": 5.2,
+        "ranking_score": 0.8234
+      }
+    }
+  },
+  
+  "feature_engineering": {
+    "price_features": [
+      "returns",
+      "log_returns",
+      "volatility_5",
+      "volatility_20",
+      "momentum_5",
+      "momentum_10",
+      "momentum_20",
+      "open_close_ratio",
+      "high_close_ratio",
+      "low_close_ratio"
+    ],
+    
+    "technical_indicators": [
+      "sma_5", "sma_10", "sma_20", "sma_50", "sma_200",
+      "ema_12", "ema_26", "ema_50",
+      "rsi", "rsi_6", "rsi_21",
+      "macd", "macd_signal", "macd_hist",
+      "bb_upper", "bb_middle", "bb_lower", "bb_width", "bb_position",
+      "atr"
+    ],
+    
+    "volume_indicators": [
+      "volume_sma_20",
+      "volume_ratio",
+      "obv",
+      "vwap"
+    ],
+    
+    "support_resistance": [
+      "support_20",
+      "resistance_20",
+      "price_position"
+    ]
+  },
+  
+  "asset_types": {
+    "stocks": ["AAPL", "GOOGL", "MSFT", "AMZN", "TSLA", "NVDA", "META"],
+    "asx_stocks": ["CBA", "BHP", "CSL", "ANZ", "NAB", "WBC", "RIO", "FMG", "WOW", "WES"],
+    "currency_pairs": ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD"],
+    "commodities": ["GC", "CL", "SI"],
+    "crypto": ["BTC-USD", "ETH-USD", "SOL-USD"],
+    "etf": ["SPY", "QQQ", "IWM", "DIA"]
+  }
+}
+

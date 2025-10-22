@@ -1,0 +1,86 @@
+# WealthArena RL System Configuration
+
+# Data collection settings
+data_sources:
+  - yahoo_finance
+  - alpha_vantage
+  - fred
+  - coingecko
+
+asset_types:
+  - stocks
+  - etfs
+  - crypto
+  - forex
+  - commodities
+
+exchanges:
+  - ASX
+  - NYSE
+  - NASDAQ
+
+start_date: "2020-01-01"
+end_date: "2024-12-31"
+
+# RL agent settings
+agent_configs:
+  allocator:
+    state_dim: 50
+    action_dim: 10
+    hidden_dims: [256, 128, 64]
+    learning_rate: 0.0001
+    gamma: 0.99
+    tau: 0.005
+  
+  executor:
+    state_dim: 20
+    action_dim: 5
+    hidden_dims: [128, 64, 32]
+    learning_rate: 0.0001
+    gamma: 0.99
+    tau: 0.005
+
+offline_pretraining: true
+online_training: true
+
+# Risk management settings
+risk_config:
+  covariance_method: "ledoit_wolf"
+  optimization_method: "risk_parity"
+  rebalance_frequency: "monthly"
+  min_weight: 0.0
+  max_weight: 0.1
+  target_volatility: 0.15
+  risk_free_rate: 0.02
+  transaction_costs: 0.001
+  enable_short_selling: false
+  max_leverage: 1.0
+
+# Backtesting settings
+backtest_config:
+  backtest_type: "vectorized"
+  initial_capital: 1000000.0
+  commission_rate: 0.001
+  slippage_rate: 0.0005
+  risk_free_rate: 0.02
+  benchmark_symbol: "SPY"
+  rebalance_frequency: "monthly"
+  max_positions: 10
+  position_size_limit: 0.1
+  enable_short_selling: true
+  enable_leverage: false
+  max_leverage: 1.0
+
+# LLM integration settings
+llm_config:
+  provider: "openai"
+  model_name: "gpt-3.5-turbo"
+  max_tokens: 1000
+  temperature: 0.7
+  enable_caching: true
+
+# System settings
+log_level: "INFO"
+data_dir: "data"
+models_dir: "models"
+results_dir: "results"

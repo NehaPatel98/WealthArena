@@ -192,7 +192,7 @@ class AdvancedTradingTrainer:
             data_dir = Path("data/processed")
             if not data_dir.exists() or len(list(data_dir.glob("*.csv"))) == 0:
                 logger.info("Downloading market data...")
-                from download_market_data import main as download_main
+                from data_collection_for_training import main as download_main
                 download_main()
             
             # Validate data

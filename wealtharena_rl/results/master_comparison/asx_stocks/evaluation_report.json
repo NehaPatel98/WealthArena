@@ -18,11 +18,11 @@
   },
   "training_results": {
     "episodes_trained": 1000,
-    "final_reward": 1.8665335110767716,
+    "final_reward": 1.7329332234383816,
     "convergence_episode": 800,
-    "training_loss": 0.24752461252159771,
-    "validation_reward": 1.3578471439488238,
-    "best_performance": 2.723280779603667
+    "training_loss": 0.34731386238553813,
+    "validation_reward": 1.1792720397871255,
+    "best_performance": 2.2365509019711225
   },
   "evaluation_metrics": {
     "returns": {
@@ -55,5 +55,5 @@
     "win_rate": "53.11%",
     "profit_factor": "1.202"
   },
-  "generated_at": "2025-09-28T00:21:15.165059"
+  "generated_at": "2025-10-17T23:32:32.679800"
 }
