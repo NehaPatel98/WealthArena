@@ -143,11 +143,41 @@ function Deploy-RAGChatbot {
         return $false
     }
     
+    # Load environment variables
+    $scriptDir = Split-Path -Parent $MyInvocation.PSCommandPath
+    $envFile = Join-Path $scriptDir ".env"
+    $envVars = @{}
+    
+    if (Test-Path $envFile) {
+        Write-ColorOutput "Loading environment configuration from $envFile" $Blue
+        $envContent = Get-Content $envFile
+        foreach ($line in $envContent) {
+            if ($line -match "^([^#][^=]+)=(.*)$") {
+                $key = $matches[1].Trim()
+                $value = $matches[2].Trim()
+                $envVars[$key] = $value
+            }
+        }
+    }
+    
+    # Check environment variables (they take precedence)
+    $groqApiKey = [Environment]::GetEnvironmentVariable("GROQ_API_KEY")
+    if ($groqApiKey) {
+        $envVars["GROQ_API_KEY"] = $groqApiKey
+    }
+    
+    $groqApiKey = if ($envVars.ContainsKey("GROQ_API_KEY")) { 
+        $envVars["GROQ_API_KEY"] 
+    } else { 
+        Write-ColorOutput "⚠️  GROQ_API_KEY not found in .env or environment. Please set it manually." $Yellow
+        "YOUR_GROQ_API_KEY"
+    }
+    
     # Environment variables for RAG chatbot
     $chatbotEnvVars = @{
-        "GROQ_API_KEY" = "YOUR_GROQ_API_KEY"
+        "GROQ_API_KEY" = $groqApiKey
         "AZURE_COSMOS_ENDPOINT" = "https://cosmos-wealtharena-$Environment.documents.azure.com:443/"
-        "AZURE_COSMOS_KEY" = "your_cosmos_key"
+        "AZURE_COSMOS_KEY" = if ($envVars.ContainsKey("AZURE_COSMOS_KEY")) { $envVars["AZURE_COSMOS_KEY"] } else { "your_cosmos_key" }
         "AZURE_COSMOS_DATABASE" = "wealtharena_cosmos"
         "AZURE_COSMOS_CONTAINER" = "knowledge_vectors"
         "VECTOR_DB_PATH" = "./chroma_db"

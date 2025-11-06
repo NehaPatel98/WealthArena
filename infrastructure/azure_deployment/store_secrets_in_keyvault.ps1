@@ -149,12 +149,37 @@ if (Set-KeyVaultSecret -VaultName $KeyVaultName -SecretName "sql-password" -Secr
 }
 
 # 2. GROQ API Key
-$groqApiKey = "YOUR_GROQ_API_KEY"
-if (Set-KeyVaultSecret -VaultName $KeyVaultName -SecretName "groq-api-key" -SecretValue $groqApiKey) {
-    Write-ColorOutput "✅ groq-api-key stored" $Green
-    $secretsStored["groq-api-key"] = $true
+# Try to load from .env file or environment variable
+$groqApiKey = $null
+$scriptDir = Split-Path -Parent $MyInvocation.PSCommandPath
+$envFile = Join-Path $scriptDir ".env"
+
+if (Test-Path $envFile) {
+    $envContent = Get-Content $envFile
+    foreach ($line in $envContent) {
+        if ($line -match "^GROQ_API_KEY=(.*)$") {
+            $groqApiKey = $matches[1].Trim()
+            break
+        }
+    }
+}
+
+# Check environment variable (takes precedence)
+if (-not $groqApiKey) {
+    $groqApiKey = [Environment]::GetEnvironmentVariable("GROQ_API_KEY")
+}
+
+if ($groqApiKey) {
+    if (Set-KeyVaultSecret -VaultName $KeyVaultName -SecretName "groq-api-key" -SecretValue $groqApiKey) {
+        Write-ColorOutput "✅ groq-api-key stored" $Green
+        $secretsStored["groq-api-key"] = $true
+    } else {
+        Write-ColorOutput "❌ Failed to store groq-api-key" $Red
+        $secretsStored["groq-api-key"] = $false
+    }
 } else {
-    Write-ColorOutput "❌ Failed to store groq-api-key" $Red
+    Write-ColorOutput "⚠️  GROQ_API_KEY not found in .env file or environment variables" $Yellow
+    Write-ColorOutput "   Please set GROQ_API_KEY in $envFile or as an environment variable" $Blue
     $secretsStored["groq-api-key"] = $false
 }
 

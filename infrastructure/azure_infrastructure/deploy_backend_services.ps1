@@ -131,9 +131,39 @@ function Setup-EnvironmentVariables {
     Write-ColorOutput "Setting up environment variables for $AppName..." $Blue
     
     try {
+        # Load environment variables from .env file or environment
+        $scriptDir = Split-Path -Parent $MyInvocation.PSCommandPath
+        $envFile = Join-Path $scriptDir ".env"
+        $loadedEnvVars = @{}
+        
+        if (Test-Path $envFile) {
+            Write-ColorOutput "Loading environment configuration from $envFile" $Blue
+            $envContent = Get-Content $envFile
+            foreach ($line in $envContent) {
+                if ($line -match "^([^#][^=]+)=(.*)$") {
+                    $key = $matches[1].Trim()
+                    $value = $matches[2].Trim()
+                    $loadedEnvVars[$key] = $value
+                }
+            }
+        }
+        
+        # Check environment variables (they take precedence)
+        $groqApiKey = [Environment]::GetEnvironmentVariable("GROQ_API_KEY")
+        if ($groqApiKey) {
+            $loadedEnvVars["GROQ_API_KEY"] = $groqApiKey
+        }
+        
+        $groqApiKey = if ($loadedEnvVars.ContainsKey("GROQ_API_KEY")) { 
+            $loadedEnvVars["GROQ_API_KEY"] 
+        } else { 
+            Write-ColorOutput "⚠️  GROQ_API_KEY not found in .env or environment. Please set it manually." $Yellow
+            "YOUR_GROQ_API_KEY"
+        }
+        
         # Set environment variables for the container app
         $envVars = @(
-            "GROQ_API_KEY=YOUR_GROQ_API_KEY",
+            "GROQ_API_KEY=$groqApiKey",
             "AZURE_STORAGE_ACCOUNT=stwealtharena$Environment",
             "AZURE_SQL_SERVER=sql-wealtharena-$Environment.database.windows.net",
             "AZURE_SQL_DATABASE=wealtharena_db",

@@ -20,6 +20,47 @@ function Write-ColorOutput {
     Write-Host $Message -ForegroundColor $Color
 }
 
+# Function to load environment variables from .env file or environment
+function Load-EnvironmentVariables {
+    $envVars = @{}
+    
+    # Try to load from .env file first
+    $scriptDir = Split-Path -Parent $MyInvocation.PSCommandPath
+    $envFile = Join-Path $scriptDir ".env"
+    
+    if (Test-Path $envFile) {
+        Write-ColorOutput "Loading environment configuration from $envFile" $Blue
+        $envContent = Get-Content $envFile
+        
+        foreach ($line in $envContent) {
+            if ($line -match "^([^#][^=]+)=(.*)$") {
+                $key = $matches[1].Trim()
+                $value = $matches[2].Trim()
+                $envVars[$key] = $value
+            }
+        }
+        Write-ColorOutput "✅ Loaded environment configuration" $Green
+    } else {
+        Write-ColorOutput "⚠️  Environment file not found: $envFile" $Yellow
+        Write-ColorOutput "   Will try to read from environment variables" $Blue
+    }
+    
+    # Also check environment variables (they take precedence)
+    $envVarNames = @("GROQ_API_KEY", "AZURE_STORAGE_ACCOUNT", "AZURE_SQL_SERVER", "AZURE_SQL_PASSWORD", "AZURE_COSMOS_KEY")
+    foreach ($varName in $envVarNames) {
+        $envValue = [Environment]::GetEnvironmentVariable($varName)
+        if ($envValue) {
+            $envVars[$varName] = $envValue
+            Write-ColorOutput "   Found $varName in environment variables" $Green
+        }
+    }
+    
+    return $envVars
+}
+
+# Load environment variables at script start
+$global:EnvVars = Load-EnvironmentVariables
+
 function Deploy-SQLDatabase {
     Write-ColorOutput "Deploying Azure SQL Database..." $Blue
     
@@ -208,13 +249,24 @@ function Deploy-BackendServices {
                 Write-ColorOutput "Backend API web app created successfully" $Green
                 
                 # Configure app settings
+                $groqApiKey = if ($global:EnvVars.ContainsKey("GROQ_API_KEY")) { 
+                    $global:EnvVars["GROQ_API_KEY"] 
+                } else { 
+                    Write-ColorOutput "⚠️  GROQ_API_KEY not found in .env or environment. Please set it manually." $Yellow
+                    "YOUR_GROQ_API_KEY"
+                }
+                
                 $appSettings = @{
-                    "GROQ_API_KEY" = "YOUR_GROQ_API_KEY"
+                    "GROQ_API_KEY" = $groqApiKey
                     "AZURE_STORAGE_ACCOUNT" = "stwealtharena$Environment"
                     "AZURE_SQL_SERVER" = "sql-wealtharena-$Environment-v2.database.windows.net"
                     "AZURE_SQL_DATABASE" = "wealtharena_db"
                     "AZURE_SQL_USER" = "wealtharena_admin"
-                    "AZURE_SQL_PASSWORD" = "Secure@Db2024!$%"
+                    "AZURE_SQL_PASSWORD" = if ($global:EnvVars.ContainsKey("AZURE_SQL_PASSWORD")) { 
+                        $global:EnvVars["AZURE_SQL_PASSWORD"] 
+                    } else { 
+                        "Secure@Db2024!$%"
+                    }
                     "AZURE_COSMOS_ACCOUNT" = "cosmos-wealtharena-$Environment"
                     "WEBSITES_PORT" = "8000"
                 }
@@ -256,8 +308,15 @@ function Deploy-RAGChatbot {
             Write-ColorOutput "RAG Chatbot web app created successfully" $Green
             
             # Configure app settings
+            $groqApiKey = if ($global:EnvVars.ContainsKey("GROQ_API_KEY")) { 
+                $global:EnvVars["GROQ_API_KEY"] 
+            } else { 
+                Write-ColorOutput "⚠️  GROQ_API_KEY not found in .env or environment. Please set it manually." $Yellow
+                "YOUR_GROQ_API_KEY"
+            }
+            
             $chatbotSettings = @{
-                "GROQ_API_KEY" = "YOUR_GROQ_API_KEY"
+                "GROQ_API_KEY" = $groqApiKey
                 "AZURE_COSMOS_ACCOUNT" = "cosmos-wealtharena-$Environment"
                 "WEBSITES_PORT" = "8000"
             }
