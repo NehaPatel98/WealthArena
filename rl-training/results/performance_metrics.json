@@ -1,0 +1,7 @@
+{
+  "best_sharpe_ratio": -Infinity,
+  "best_profit": 0.0,
+  "best_win_rate": 0.0,
+  "best_max_drawdown": Infinity,
+  "training_history": []
+}

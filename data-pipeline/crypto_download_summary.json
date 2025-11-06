@@ -1,0 +1,18 @@
+{
+  "download_date": "2025-11-04T21:15:25.145908",
+  "num_symbols": 7,
+  "category": "Major",
+  "date_range": {
+    "start": "2022-01-01",
+    "end": "2025-01-01"
+  },
+  "symbols": [
+    "BNB-USD",
+    "BTC-USD",
+    "DOGE-USD",
+    "ETH-USD",
+    "SOL-USD",
+    "TRX-USD",
+    "XRP-USD"
+  ]
+}

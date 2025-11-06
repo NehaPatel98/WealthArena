@@ -1,0 +1,86 @@
+# Quick Training Configuration for Local PC Training
+# Optimized for fast training targeting 70%+ win rate
+# Target: 100K timesteps (500 iterations × 4 workers × 2 envs × 250 steps ≈ 100K)
+
+data:
+  data_path: "data/processed"
+  start_date: "2022-01-01"
+  end_date: "2025-01-01"
+  asset_classes: ["stocks", "crypto", "forex", "commodities", "etfs"]
+
+environment:
+  num_agents: 1
+  episode_length: 252
+  lookback_window_size: 30
+  initial_cash: 1000000
+  transaction_cost_rate: 0.001
+  slippage_rate: 0.0005
+
+# Reward weights (Optimized for 70%+ Win Rate)
+reward_weights:
+  profit: 3.0        # Increased from default 2.0
+  risk: 1.0         # Increased from default 0.5
+  cost: 0.1
+  stability: 0.05
+  sharpe: 1.5       # Increased from default 1.0
+  trend_reversal: 2.5  # Increased from default 2.0
+  win_rate_bonus: 2.0  # NEW - explicit win rate incentive
+
+# Training Configuration (Quick Mode)
+training:
+  algorithm: PPO
+  learning_rate: 0.0003
+  gamma: 0.99
+  gae_lambda: 0.95
+  entropy_coeff: 0.01
+  vf_loss_coeff: 0.5
+  clip_param: 0.2
+  num_sgd_iter: 10      # Reduced from 20 for speed
+  sgd_minibatch_size: 128  # Reduced from 256
+  train_batch_size: 4000   # Reduced from 8000
+  max_iterations: 500      # ≈100K timesteps
+  target_reward: 300.0
+  early_stopping: true
+  patience: 50             # Stop if no improvement for 50 iterations
+
+# Resource Configuration (Local PC)
+resources:
+  num_workers: 4
+  num_envs_per_worker: 2   # 8 parallel environments
+  num_cpus_per_worker: 1   # 4 CPUs total
+  num_gpus: 0              # CPU-only
+
+# Evaluation Configuration
+evaluation:
+  eval_interval: 25        # Evaluate every 25 iterations
+  eval_duration: 10       # 10 episodes per evaluation
+  eval_episodes: 20        # Final evaluation
+
+# Checkpointing
+checkpointing:
+  checkpoint_freq: 25      # Save every 25 iterations
+  keep_checkpoints_num: 5  # Keep last 5
+  save_best_only: true
+
+# Experiment Tracking
+experiment_tracking:
+  mlflow:
+    enabled: true
+    tracking_uri: "http://localhost:5000"
+    experiment_name: "WealthArena_Quick_Training"
+  wandb:
+    enabled: false         # Disable for faster training
+
+# Risk Management
+risk_management:
+  max_position_size: 0.15      # 15% max per position
+  max_portfolio_risk: 0.12     # 12% max volatility
+  stop_loss_threshold: 0.08   # 8% stop loss
+  take_profit_threshold: 0.20  # 20% take profit
+  max_drawdown_limit: 0.15    # 15% max drawdown
+
+# Win Rate Target
+win_rate:
+  target_win_rate: 0.70    # 70% minimum
+  win_rate_weight: 2.0    # Reward component weight
+

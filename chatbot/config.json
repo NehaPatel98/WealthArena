@@ -1,0 +1,4 @@
+{
+    "use_root_azure_config": true,
+    "note": "This file is no longer used. See azure_config.json at repo root."
+}

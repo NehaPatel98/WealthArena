@@ -1,0 +1,19 @@
+[run]
+source = app
+omit =
+    */tests/*
+    */test_*.py
+    */__pycache__/*
+    */venv/*
+    */env/*
+    */ENV/*
+    */.venv/*
+
+[report]
+precision = 2
+show_missing = True
+skip_covered = False
+
+[xml]
+output = coverage.xml
+

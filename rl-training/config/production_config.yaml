@@ -1,0 +1,127 @@
+checkpointing:
+  checkpoint_freq: 25
+  keep_checkpoints_num: 10
+  save_best_only: true
+data:
+  cache_enabled: true
+  allow_cached_data: true  # Allow using previously downloaded data
+  end_date: '2024-12-31'
+  interval: 1d
+  source: yfinance
+  start_date: '2020-01-01'
+  # Reduced default symbols to highly liquid stocks
+  symbols:
+  - AAPL
+  - GOOGL
+  - MSFT
+  - TSLA
+  - AMZN
+  - NVDA
+  - META
+  - NFLX
+  - AMD
+  - INTC
+  - JPM
+  - JNJ
+  - V
+  - PG
+  # ASX-specific configuration
+  asx:
+    use_verified_symbols_only: true  # Use curated verified symbol list
+    max_symbols: 20  # Conservative limit
+    batch_size: 3  # Very small batches
+    sleep_between: 10.0  # Long pauses between batches
+    max_workers: 1  # Sequential downloads to avoid rate limits
+  # Data collection settings
+  symbol_validation_enabled: true  # Enable pre-validation
+  max_download_retries: 3  # Number of retries per symbol
+  retry_delay_seconds: 10  # Base delay for retries (increased)
+  api_rate_limit_delay: 2.0  # Minimum delay between API calls
+environment:
+  episode_length: 252
+  initial_cash_per_agent: 1000000
+  lookback_window_size: 30
+  num_agents: 5
+  num_assets: 20
+  reward_weights:
+    cost: 0.1
+    profit: 2.0
+    risk: 0.5
+    sharpe: 1.0
+    stability: 0.05
+  slippage_rate: 0.0002
+  transaction_cost_rate: 0.0005
+evaluation:
+  benchmark_symbols:
+  - SPY
+  - QQQ
+  - IWM
+  eval_duration: 20
+  eval_episodes: 50
+  eval_interval: 25
+experiment_tracking:
+  mlflow:
+    enabled: true
+    experiment_name: WealthArena_Production
+    tracking_uri: http://localhost:5000
+  wandb:
+    enabled: true
+    entity: wealtharena
+    project: wealtharena-trading
+resources:
+  num_cpus_per_worker: 2
+  num_envs_per_worker: 2
+  num_gpus: 0
+  num_workers: 4
+risk_management:
+  correlation_limit: 0.7
+  max_drawdown_limit: 0.15
+  max_portfolio_risk: 0.12
+  max_position_size: 0.15
+  stop_loss_threshold: 0.08
+  take_profit_threshold: 0.2
+  var_confidence: 0.95
+training:
+  algorithm: PPO
+  clip_param: 0.2
+  early_stopping: true
+  entropy_coeff: 0.01
+  gae_lambda: 0.95
+  gamma: 0.995
+  learning_rate: 0.0001
+  max_iterations: 2000
+  num_sgd_iter: 20
+  patience: 100
+  sgd_minibatch_size: 256
+  target_reward: 500.0
+  train_batch_size: 8000
+  vf_loss_coeff: 0.5
+# Data collection fallback strategy
+# Data Collection Strategy:
+# 1. Try to load cached data from data/processed/
+# 2. If no cache, generate synthetic data
+# 3. Only attempt live download if explicitly requested
+# This ensures training can always proceed
+data_collection:
+  fallback_strategy: "cached_then_synthetic_then_minimal"  # Multi-layer fallback
+  min_symbols_required: 5  # Minimum symbols needed for training
+  use_verified_symbols_only: true  # Prefer verified symbol lists
+  max_consecutive_failures: 10  # Circuit breaker threshold
+  circuit_breaker_cooldown_seconds: 60  # Cooldown after circuit breaker triggers
+  enable_symbol_validation: true  # Enable pre-validation
+  validation_sample_size: 10  # Number of symbols to test
+  minimal_verified_exchange: "ASX"  # Exchange to use for minimal verified fallback
+  minimal_verified_count: 10  # Number of verified symbols to use in fallback
+  use_synthetic_data: true  # Use synthetic data by default when Yahoo Finance is blocked
+
+# Synthetic data generation configuration
+synthetic_data:
+  enabled: true  # Enable synthetic data generation
+  num_symbols: 20  # Number of synthetic symbols to generate
+  start_date: "2020-01-01"
+  end_date: "2024-12-31"
+  daily_return_mean: 0.0005  # 0.05% per day, ~13% annual
+  daily_volatility: 0.02  # 2% per day, ~32% annual
+  correlation: 0.3  # Moderate correlation between stocks
+  starting_price: 100.0  # Starting price per stock
+  volume_mean: 1000000  # Mean volume in shares

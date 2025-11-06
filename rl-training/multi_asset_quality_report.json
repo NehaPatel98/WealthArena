@@ -1,0 +1,34 @@
+{
+  "overall_quality": "excellent",
+  "asset_quality": {
+    "stocks": {
+      "average_quality": 98.78385572960117,
+      "issues": [
+        "IGN.AX: High missing data (11.5%)"
+      ],
+      "symbols_checked": 1124
+    },
+    "etfs": {
+      "average_quality": 98.81328816111424,
+      "issues": [],
+      "symbols_checked": 3
+    },
+    "crypto": {
+      "average_quality": 99.15544978346301,
+      "issues": [],
+      "symbols_checked": 10
+    },
+    "forex": {
+      "average_quality": 95.3330411919369,
+      "issues": [],
+      "symbols_checked": 10
+    },
+    "commodities": {
+      "average_quality": 98.64216117976571,
+      "issues": [],
+      "symbols_checked": 7
+    }
+  },
+  "issues": [],
+  "recommendations": []
+}
