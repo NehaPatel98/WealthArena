@@ -33,3 +33,4 @@ jobs:
           args: >
             -Dsonar.projectKey=AIP-F25-1_WealthArena
             -Dsonar.organization=aip-f25-1
+            -Dsonar.projectName=WealthArena
