@@ -33,9 +33,3 @@ jobs:
           args: >
             -Dsonar.projectKey=AIP-F25-1_WealthArena
             -Dsonar.organization=aip-f25-1
-            -Dsonar.projectBaseDir=.
-            -Dsonar.sources=backend/src,frontend,chatbot/app,rl-service/api,data-pipeline
-            -Dsonar.tests=backend/src/__tests__,frontend/__tests__,chatbot/tests
-            -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/build/**,**/__pycache__/**,**/data/**,**/models/**,**/checkpoints/**,**/logs/**,**/notebooks/**,**/*.min.js,**/*.bundle.js,**/coverage/**,**/.expo/**,**/android/**,**/ios/**,**/*.java
-            -Dsonar.sourceEncoding=UTF-8
-            -Dsonar.test.inclusions=**/*test*.ts,**/*test*.tsx,**/*test*.js,**/*test*.jsx,**/test_*.py,**/*_test.py
