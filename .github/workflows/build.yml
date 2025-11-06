@@ -31,7 +31,7 @@ jobs:
           SONAR_HOST_URL: https://sonarcloud.io
         with:
           args: >
-            -Dsonar.projectKey=AIP-F25-1_WealthArena
+            -Dsonar.projectKey=wealtharena
             -Dsonar.organization=aip-f25-1
             -Dsonar.projectBaseDir=.
             -Dsonar.sources=backend/src,frontend,chatbot/app,rl-service/api,data-pipeline
