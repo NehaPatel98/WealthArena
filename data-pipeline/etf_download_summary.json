@@ -1,0 +1,15 @@
+{
+  "download_date": "2025-11-01T20:41:17.493816",
+  "num_symbols": 3,
+  "asx_only": false,
+  "global_only": false,
+  "date_range": {
+    "start": "2022-01-01",
+    "end": "2025-01-01"
+  },
+  "symbols": [
+    "SFY.AX",
+    "SLF.AX",
+    "STW.AX"
+  ]
+}

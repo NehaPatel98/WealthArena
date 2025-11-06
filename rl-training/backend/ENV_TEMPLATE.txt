@@ -1,0 +1,22 @@
+# Copy this file to .env and fill in your actual values
+# Command: cp ENV_TEMPLATE.txt .env
+
+# Azure SQL Database
+AZURE_SQL_SERVER=wealtharena-sql-server.database.windows.net
+AZURE_SQL_DATABASE=wealtharena_db
+AZURE_SQL_USERNAME=sqladmin
+AZURE_SQL_PASSWORD=YOUR_PASSWORD_HERE
+
+# Full connection string (fill in password)
+AZURE_SQL_CONNECTION_STRING=Server=tcp:wealtharena-sql-server.database.windows.net,1433;Initial Catalog=wealtharena_db;User ID=sqladmin;Password=YOUR_PASSWORD_HERE;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;
+
+# Model Configuration
+MODEL_PATH=/app/checkpoints
+MODEL_VERSION=v2.3.1
+CACHE_TIMEOUT=300
+
+# API Configuration
+API_PORT=8000
+API_WORKERS=2
+CORS_ORIGINS=*
+

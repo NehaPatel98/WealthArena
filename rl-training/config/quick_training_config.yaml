@@ -1,0 +1,86 @@
+# Quick Training Configuration for Local PC Training
+# Optimized for fast training (2.5-5 hours total) with 70%+ win rate target
+
+checkpointing:
+  checkpoint_freq: 25
+  keep_checkpoints_num: 5
+  save_best_only: true
+
+data:
+  cache_enabled: true
+  end_date: '2025-01-01'
+  interval: 1d
+  source: processed_csvs
+  start_date: '2022-01-01'
+  data_path: 'data/processed'
+  max_symbols: 50  # Limit to 50 stocks for quick training
+
+environment:
+  episode_length: 252
+  initial_cash: 1000000
+  initial_cash_per_agent: 1000000  # Required for multi-agent environment
+  lookback_window_size: 30
+  num_agents: 1
+  num_assets: 20
+  transaction_cost_rate: 0.001
+  slippage_rate: 0.0005
+  reward_weights:
+    cost: 0.1
+    profit: 3.0
+    risk: 1.0
+    sharpe: 1.5
+    stability: 0.05
+    trend_reversal: 2.5
+    win_rate_bonus: 2.0
+
+evaluation:
+  benchmark_symbols:
+  - SPY
+  - QQQ
+  - IWM
+  eval_duration: 10
+  eval_episodes: 20
+  eval_interval: 25
+
+experiment_tracking:
+  mlflow:
+    enabled: true
+    experiment_name: WealthArena_Quick_Training
+    tracking_uri: http://localhost:5000
+  wandb:
+    enabled: false
+    entity: wealtharena
+    project: wealtharena-trading
+
+resources:
+  num_cpus_per_worker: 1
+  num_envs_per_worker: 2
+  num_gpus: 0
+  num_workers: 4
+
+risk_management:
+  correlation_limit: 0.7
+  max_drawdown_limit: 0.15
+  max_portfolio_risk: 0.12
+  max_position_size: 0.15
+  stop_loss_threshold: 0.08
+  take_profit_threshold: 0.20
+  var_confidence: 0.95
+
+training:
+  algorithm: PPO
+  clip_param: 0.2
+  early_stopping: true
+  entropy_coeff: 0.01
+  gae_lambda: 0.95
+  gamma: 0.99
+  learning_rate: 0.0003
+  max_iterations: 500
+  num_sgd_iter: 10
+  patience: 50
+  sgd_minibatch_size: 128
+  target_reward: 300.0
+  target_win_rate: 0.70
+  train_batch_size: 4000
+  vf_loss_coeff: 0.5
+  win_rate_weight: 2.0

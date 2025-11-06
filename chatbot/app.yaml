@@ -1,0 +1,45 @@
+runtime: python311
+service: chatbot
+env: flex
+
+resources:
+  cpu: 1
+  memory_gb: 2
+  disk_size_gb: 10
+
+automatic_scaling:
+  min_num_instances: 0
+  max_num_instances: 3
+  cool_down_period_sec: 120
+  cpu_utilization:
+    target_utilization: 0.65
+
+env_variables:
+  GROQ_MODEL: "llama3-8b-8192"
+  LLM_PROVIDER: "groq"
+  PORT: "8080"
+  CHROMA_PERSIST_DIR: "/app/data/chroma_db"
+  APP_HOST: "0.0.0.0"
+
+secrets:
+  - variable: GROQ_API_KEY
+    secret: groq-api-key
+    version: latest
+
+entrypoint: uvicorn app.main:app --host 0.0.0.0 --port 8080 --workers 2
+
+liveness_check:
+  path: "/healthz"
+  check_interval_sec: 30
+  timeout_sec: 4
+  failure_threshold: 2
+  success_threshold: 2
+
+readiness_check:
+  path: "/healthz"
+  check_interval_sec: 5
+  timeout_sec: 4
+  failure_threshold: 2
+  success_threshold: 2
+  app_start_timeout_sec: 300
+
