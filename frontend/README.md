@@ -163,7 +163,8 @@ The app uses Expo configuration in `app.json` for:
 - NativeWind for utility-first styling
 - Custom color themes in `constants/colors.ts`
 - Responsive design patterns
-- Dark/light mode support
+- Dark Mode support
+light mode support
 
 ## 📱 Deployment
 
