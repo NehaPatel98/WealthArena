@@ -24,7 +24,7 @@ WealthArena is an innovative investment platform that combines financial educati
 - Gamified investment simulation environment
 - Risk-free learning with virtual portfolios
 - Achievement system and progress tracking
-- Educational challenges and scenarios
+
 
 ### 👤 **Profile Management**
 - User account settings and preferences
