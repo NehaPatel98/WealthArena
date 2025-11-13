@@ -2,7 +2,113 @@
 
 A comprehensive trading education platform with AI-powered chat, sentiment analysis, and financial data integration.
 
-## 🚀 Quick Setup
+## ⚠️ First Time Setup
+
+**IMPORTANT**: You must start the server before running any tests. The `dev_up.ps1` script handles everything automatically.
+
+**Expected time**: 2-3 minutes for first run, 30 seconds for subsequent runs.
+
+---
+
+## 🚀 Quick Start
+
+### Step 1: Start the Development Server
+
+```powershell
+# Copy environment file (if not already done)
+copy .env.example .env
+
+# Edit .env and add your GROQ_API_KEY
+
+# Start the server (first time setup)
+powershell -ExecutionPolicy Bypass -File scripts/dev_up.ps1
+```
+
+The script will:
+- ✅ Create a virtual environment (`.venv`)
+- ✅ Install minimal runtime dependencies
+- ✅ Ingest Knowledge Base into vector database
+- ✅ Start the API server on port 8000
+
+**Wait for the server to start** - you'll see "Server started successfully!" message.
+
+### Step 2: Verify Server is Running (in a NEW terminal)
+
+```powershell
+python scripts/check_server.py
+```
+
+Expected output: `✅ All prerequisites met! Server is ready.`
+
+### Step 3: Run the Metrics Test
+
+```powershell
+python scripts/print_metrics.py --url http://127.0.0.1:8000 --runs 5
+```
+
+**API will be available at:**
+- Health Check: http://127.0.0.1:8000/healthz
+- API Docs: http://127.0.0.1:8000/docs
+- Interactive docs: http://127.0.0.1:8000/docs
+
+---
+
+## 🚨 Common Issues
+
+If you encounter problems, see the [Troubleshooting Guide](docs/TROUBLESHOOTING.md) for detailed solutions.
+
+**Quick fixes:**
+- **Server not running** → See [TROUBLESHOOTING.md Section 2](docs/TROUBLESHOOTING.md#section-2-server-not-running-issues)
+- **Connection refused** → See [TROUBLESHOOTING.md Section 2](docs/TROUBLESHOOTING.md#section-2-server-not-running-issues)
+- **Port already in use** → See [TROUBLESHOOTING.md Section 3](docs/TROUBLESHOOTING.md#section-3-port-conflicts)
+- **Import errors** → See [TROUBLESHOOTING.md Section 4](docs/TROUBLESHOOTING.md#section-4-dependency-issues)
+
+### PDF Ingestion Issues
+
+**Problem**: PDF ingestion gets stuck or takes hours
+
+**Solutions**:
+
+1. **Use smaller batch sizes** for better progress feedback:
+
+   ```bash
+   python scripts/pdf_ingest.py --batch-size 20 --duplicate-check-batch-size 200
+   ```
+
+2. **Enable parallel processing** (process 2-3 PDFs at once):
+
+   ```bash
+   python scripts/pdf_ingest.py --parallel --max-workers 2
+   ```
+
+3. **Resume interrupted uploads**:
+
+   ```bash
+   # Resume (partials are saved by default)
+   python scripts/pdf_ingest.py --resume
+   
+   # Resume but retry partial ingestions
+   python scripts/pdf_ingest.py --resume --no-resume-partial
+   ```
+
+4. **Skip problematic PDFs** and continue:
+
+   ```bash
+   python scripts/pdf_ingest.py --skip-on-error
+   ```
+
+5. **Check progress**: Look for log messages showing batch progress (e.g., "Processing batch 3/10")
+
+6. **First-time setup**: The first PDF takes longer (downloads embedding model ~80MB)
+
+**Performance Tips**:
+
+- Typical processing time: 2-5 minutes per PDF (depends on size and CPU)
+- First batch is slowest (model download + initialization)
+- Subsequent batches are faster (model cached)
+- Use `--parallel` for 20+ PDFs to save time
+
+## 🚀 Alternative Setup (Manual)
 
 ### 1. Environment Setup
 ```bash
@@ -20,24 +126,35 @@ pip install -r requirements.txt
 ```
 
 ### 2. Environment Configuration
-Copy `.env.example` to `.env` and configure your API keys:
+
+**Get Your Groq API Key (REQUIRED):**
+1. Visit https://console.groq.com/
+2. Sign up or log in
+3. Go to API Keys section
+4. Create a new API key
+5. Copy the key (starts with `gsk_`)
+
+**IMPORTANT:** The application requires a valid Groq API key to function. Without it, all LLM-powered features will be unavailable.
+
+**Create and Configure .env File:**
 ```bash
+# Copy the example file
 cp .env.example .env
 ```
 
-Edit `.env` with your credentials:
+Edit `.env` and add your API key (REQUIRED):
 ```env
-GROQ_API_KEY=your_groq_api_key_here
+GROQ_API_KEY=gsk_your_actual_key_here  # REQUIRED: Replace with your actual Groq API key from https://console.groq.com/
 GROQ_MODEL=llama3-8b-8192
 LLM_PROVIDER=groq
-SENTIMENT_MODEL_DIR=models/sentiment-finetuned
-SENTRY_DSN=
-CHROMA_PERSIST_DIR=data/vectorstore
+CHROMA_PERSIST_DIR=data/vectorstore  # Use absolute path for reliability
 APP_HOST=0.0.0.0
 APP_PORT=8000
-```
 
-**Important**: Never commit your actual API keys to the repository. Always use `.env.example` as a template and keep your `.env` file in `.gitignore`.
+# PDF Ingestion Configuration (optional)
+PDF_INGEST_INTERVAL_HOURS=24  # Background job interval for PDF ingestion
+ENABLE_PDF_INGESTION=true     # Enable automatic PDF ingestion
+```
 
 ### 3. Run the API Server
 ```bash
@@ -63,7 +180,7 @@ docker-compose up -d
 
 ### Page 4 – Chat & Knowledge
 - **POST** `/v1/chat` → `{"message":"..."}`  # uses Groq; "analyze: ..." hits local sentiment
-- **WS** `/v1/chat/stream?user_id=...`
+- **GET/POST** `/v1/chat/stream` → Server-Sent Events (SSE) with `Content-Type: text/event-stream`. Format: `data: {"chunk": "...", "index": 0}\n\n`. Supports query params (GET) or JSON body (POST).
 - **GET** `/v1/search?q=&k=5`
 - **POST** `/v1/explain` → `{"question":"...", "k":3}`
 - **POST** `/v1/chat/history`
@@ -87,7 +204,166 @@ docker-compose up -d
 - **GET** `/docs`               # Interactive API documentation
 - **GET** `/healthz`            # Health check
 
+### Background Jobs & Data Pipeline
+- **GET** `/v1/background/status` → Job health and last run times
+
+## 📊 RAG Data Pipeline
+
+### Overview
+
+WealthArena uses a RAG (Retrieval Augmented Generation) system that combines:
+
+- **Knowledge Base**: Curated educational content (markdown files from `docs/kb/`)
+- **PDF Documents**: User-uploaded PDF files from the `docs/` directory
+
+### PDF Ingestion
+
+Process PDF files from the `docs/` directory:
+
+```bash
+# Basic usage
+python scripts/pdf_ingest.py
+
+# With parallel processing (recommended for 20+ PDFs)
+python scripts/pdf_ingest.py --parallel --max-workers 2
+
+# Optimized defaults for parallel processing (recommended for 20+ PDFs)
+python scripts/pdf_ingest.py --parallel --max-workers 2 --batch-size 30 --duplicate-check-batch-size 200 --skip-on-error --resume
+
+# Resume interrupted uploads (partials are saved by default)
+python scripts/pdf_ingest.py --resume
+
+# Resume but retry partial ingestions on next run
+python scripts/pdf_ingest.py --resume --no-resume-partial
+
+# Optimized batch sizes for better progress feedback
+python scripts/pdf_ingest.py --batch-size 30 --duplicate-check-batch-size 200
+
+# Skip problematic PDFs and continue
+python scripts/pdf_ingest.py --skip-on-error
+```
+
+See [PDF Ingestion Issues](#pdf-ingestion-issues) section for troubleshooting.
+
+### Initial Setup
+
+```bash
+# Load initial data (run once)
+python scripts/initial_data_load.py
+
+# Verify data pipeline
+python scripts/verify_data_pipeline.py
+```
+
+### Background Jobs
+
+The API automatically runs background jobs for:
+
+- PDF ingestion: Periodically processes PDF files from the `docs/` directory (configurable via `PDF_INGEST_INTERVAL_HOURS`, default: 24 hours)
+
+Check job status: `GET /v1/background/status`
+
+### Configuration
+
+Required environment variables:
+
+- `GROQ_API_KEY`: Must be a valid Groq API key from https://console.groq.com/ (starts with `gsk_`)
+- `CHROMA_PERSIST_DIR`: Use absolute path for reliability (code resolves relative paths programmatically)
+
+Optional environment variables:
+
+- `PDF_INGEST_INTERVAL_HOURS`: Background job interval for PDF ingestion in hours (default: 24)
+- `ENABLE_PDF_INGESTION`: Enable/disable automatic PDF ingestion (default: true)
+
+See `.env.example` for full configuration options.
+
+For detailed documentation, see [RAG Pipeline Documentation](docs/RAG_PIPELINE.md).
+
+### Data Pipeline Orchestration
+
+Run the complete data pipeline using the orchestrator script:
+
+```powershell
+# Run full pipeline (all phases)
+powershell -ExecutionPolicy Bypass -File deploy-master.ps1
+
+# Skip PDF ingestion
+powershell -ExecutionPolicy Bypass -File deploy-master.ps1 --skip-pdf-ingest
+
+# Full refresh (clear collections and reload)
+powershell -ExecutionPolicy Bypass -File deploy-master.ps1 --full-refresh
+```
+
+The pipeline orchestrator runs these phases:
+1. **PHASE 0**: Environment setup (Python, packages, directories)
+2. **PHASE 1**: PDF ingestion from `docs/` directory
+3. **PHASE 2**: API verification (test endpoints)
+4. **PHASE 3**: Summary and next steps
+
 ## 🧪 Testing & Development
+
+### Server Health Check
+
+Before running tests, verify the server is running:
+
+```powershell
+python scripts/check_server.py
+```
+
+This checks:
+- Server is responding at http://127.0.0.1:8000
+- Virtual environment exists
+- Knowledge base is ingested
+- Required packages are installed
+- Environment variables are configured
+
+### Performance Metrics
+
+**⚠️ IMPORTANT: Server Must Be Running Before Testing**
+
+Before running any metrics or tests:
+
+1. **Start the server:**
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File scripts/dev_up.ps1
+   ```
+
+2. **Verify it's running:**
+   ```powershell
+   python scripts/check_server.py
+   ```
+   Wait for: "✅ Server is running at http://127.0.0.1:8000"
+
+3. **Then run tests:**
+   ```powershell
+   python scripts/print_metrics.py
+   ```
+
+**Common Mistake:** Running `print_metrics.py` before starting the server results in 0% success rate in `metrics/runtime_http.json`. Always start the server first!
+
+**Note:** Metrics should be generated dynamically using `scripts/print_metrics.py` rather than viewing static snapshots. Static metric files become outdated and can be misleading.
+
+---
+
+Run performance tests (requires server running):
+
+```powershell
+python scripts/print_metrics.py --url http://127.0.0.1:8000 --runs 5
+```
+
+Arguments:
+- `--url`: Base URL of the API server (default: `http://127.0.0.1:8000`)
+- `--runs`: Number of test iterations per endpoint (default: `5`)
+
+> **Note:** If metrics show 0% success rate, the server was not running during the test. Follow the steps above to regenerate valid metrics.
+
+### Basic Endpoint Tests
+
+Run basic endpoint tests (uses port 8000 by default):
+
+```powershell
+python scripts/smoke_local.py
+```
 
 ### Run Tests
 ```bash
@@ -226,33 +502,79 @@ ml/scripts/run_pipeline.ps1
 ```
 WealthArena/
 ├── app/                    # FastAPI application
+│   ├── background/        # Background job scheduler
+│   │   └── scheduler.py   # Periodic PDF ingestion
 │   ├── api/               # API endpoints
 │   │   ├── chat.py        # Chat endpoints
+│   │   ├── chat_stream.py # WebSocket chat streaming
 │   │   ├── game.py        # Game mode endpoints
-│   │   ├── search.py      # Search functionality
-│   │   └── ...            # Other endpoints
+│   │   ├── game_stream.py # WebSocket game streaming
+│   │   ├── search.py      # Vector search functionality
+│   │   ├── explain.py     # AI explanation with KB
+│   │   ├── market.py      # Market data endpoints
+│   │   ├── context.py     # Context & knowledge
+│   │   ├── history.py     # Chat history
+│   │   ├── feedback.py    # User feedback
+│   │   ├── export.py      # Data export
+│   │   ├── metrics.py     # System metrics
+│   │   └── background.py # Background job status
 │   ├── llm/               # LLM client integration
+│   │   ├── client.py      # Groq LLM client
+│   │   └── guard_prompt.txt # Educational guardrails
 │   ├── models/            # ML model wrappers
-│   ├── tools/             # Utility tools (prices, news)
+│   │   └── sentiment.py  # Sentiment analysis
+│   ├── tools/             # Utility tools
+│   │   ├── prices.py      # Price data tools
+│   │   ├── document_processor.py # Document chunking
+│   │   ├── pdf_processor.py # PDF processing
+│   │   ├── vector_ingest.py    # Vector store ingestion
+│   │   └── retrieval.py   # KB vector search
+│   ├── metrics/           # Prometheus metrics
+│   ├── middleware/        # FastAPI middleware
 │   └── main.py           # Application entry point
-├── ml/                    # Machine Learning components
-│   ├── notebooks/         # Jupyter notebooks for ML training
+├── docs/                 # Documentation
+│   ├── kb/               # Knowledge Base (NEW)
+│   │   ├── intro.md      # Platform introduction
+│   │   ├── indicators_rsi.md # RSI guide
+│   │   └── risk_management.md # Risk management
+│   ├── CHAT_HISTORY_API.md
+│   ├── CHAT_STREAMING.md
+│   ├── CONTEXT_KNOWLEDGE_API.md
+│   ├── INTEGRATION_ANDROID.md
+│   ├── INTEGRATION_IOS.md
+│   └── INTEGRATION_RN.md
+├── packages/             # Mobile SDKs
+│   ├── mobile-sdk-android/ # Android SDK
+│   ├── mobile-sdk-ios/    # iOS SDK
+│   ├── mobile-sdk-rn/     # React Native SDK
+│   └── wealtharena-rn/    # RN Components
+├── examples/              # Demo applications
+│   ├── android-demo/      # Android demo
+│   ├── ios-demo/          # iOS demo
+│   └── rn-demo/           # React Native demo
+├── ml/                    # Machine Learning
+│   ├── notebooks/         # Jupyter notebooks
 │   │   ├── 01_prepare_data.ipynb
 │   │   ├── 02_finetune_sentiment.ipynb
 │   │   └── 03_finetune_intent.ipynb
-│   └── scripts/          # ML pipeline scripts
-│       ├── export_finphrasebank.py
-│       ├── pipeline_prepare_and_train.py
-│       └── run_pipeline.ps1
-├── models/               # Trained ML models (gitignored)
-├── data/                 # Training data and vectorstore (gitignored)
-├── scripts/              # Utility scripts
-├── docs/                 # API documentation
-├── tests/                # Test files
-├── requirements.txt      # Python dependencies
-├── Dockerfile           # Docker configuration
-├── docker-compose.yml   # Docker Compose setup
-└── .env.example        # Environment template
+│   └── scripts/           # ML pipeline scripts
+├── scripts/               # Development scripts
+│   ├── dev_up.ps1         # Windows one-command setup
+│   ├── dev_up.sh          # Unix one-command setup
+│   ├── kb_ingest.py       # Knowledge Base ingestion
+│   ├── initial_data_load.py    # One-time data loading
+│   ├── verify_data_pipeline.py # Pre-deployment checks
+│   ├── run_pipeline.py         # Data pipeline orchestrator
+│   ├── smoke_local.py     # API testing
+│   └── export_openapi.py  # API documentation
+├── tests/                 # Test files
+├── data/                  # Runtime data (gitignored)
+│   ├── chat_history.db    # SQLite chat history
+│   ├── vectorstore/       # ChromaDB vector store
+│   └── game_state/        # Game state storage
+├── models/                # Trained ML models (gitignored)
+├── requirements.txt       # Dependencies
+└── .env.example          # Environment template
 ```
 
 ## 🔧 Configuration
@@ -260,27 +582,35 @@ WealthArena/
 ### Environment Variables
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `GROQ_API_KEY` | Groq API key for LLM | Required |
+| `GROQ_API_KEY` | Groq API key for LLM (REQUIRED - application will not function without it) | Required |
 | `GROQ_MODEL` | Groq model to use | `llama3-8b-8192` |
 | `LLM_PROVIDER` | LLM provider | `groq` |
 | `SENTIMENT_MODEL_DIR` | Path to sentiment model | `models/sentiment-finetuned` |
 | `SENTRY_DSN` | Sentry DSN for error tracking | Optional |
-| `CHROMA_PERSIST_DIR` | Vector database directory | `data/vectorstore` |
+| `CHROMA_PERSIST_DIR` | Vector database directory (use absolute path) | `data/vectorstore` (resolved to absolute) |
+| `PDF_INGEST_INTERVAL_HOURS` | Background job interval for PDF ingestion | `24` |
+| `ENABLE_PDF_INGESTION` | Enable/disable automatic PDF ingestion | `true` |
+| `ENABLE_TOOLS` | Enable/disable non-LLM features (sentiment analysis, price queries) | `false` |
+| `ENABLE_SENTIMENT_ANALYSIS` | Enable/disable sentiment analysis (requires ENABLE_TOOLS=true) | `false` |
 | `APP_HOST` | Server host | `0.0.0.0` |
 | `APP_PORT` | Server port | `8000` |
 
 ## 🚨 Troubleshooting
 
-### Common Issues
+For detailed troubleshooting steps, see the [Troubleshooting Guide](docs/TROUBLESHOOTING.md).
 
-1. **Import Errors**: Make sure virtual environment is activated and dependencies installed
-2. **Model Not Found**: Train the sentiment model using the notebook first
-3. **API Connection**: Ensure server is running on correct port (8000)
-4. **RSS Errors**: Some feeds may be blocked - this is normal and tracked in metrics
-5. **Docker Issues**: Check if ports are available and Docker is running
+### Data Pipeline Issues
 
-### Health Check
-```bash
+- **No documents in vector store**: Run `python scripts/kb_ingest.py` to ingest knowledge base, and `python scripts/pdf_ingest.py` to ingest PDF documents
+- **PDF ingestion not running**: Check `/v1/background/status` and logs. Verify `ENABLE_PDF_INGESTION=true` in `.env`
+- **PDF ingestion slow**: Use parallel processing with `python scripts/pdf_ingest.py --parallel --max-workers 2`
+
+### Quick Diagnostics
+
+```powershell
+# Check server health and prerequisites
+python scripts/check_server.py
+
 # Check if API is running
 curl http://localhost:8000/healthz
 
@@ -288,14 +618,20 @@ curl http://localhost:8000/healthz
 curl http://localhost:8000/metrics
 ```
 
-### Logs
-```bash
-# View Docker logs
-docker-compose logs -f api
+### Common Issues
 
-# View specific service logs
-docker-compose logs api
-```
+1. **GROQ_API_KEY not set or invalid**: 
+   - Error: "GROQ_API_KEY is required" or "LLM service unavailable"
+   - Solution: Ensure `.env` file exists with a valid `GROQ_API_KEY` starting with `gsk_`
+   - Get your key from: https://console.groq.com/
+   - Verify the key is correctly formatted (no extra spaces, correct prefix)
+   - Restart the server after adding/updating the API key
+
+2. **Server not running**: Run `powershell -ExecutionPolicy Bypass -File scripts/dev_up.ps1` first
+3. **Port 8000 busy**: See [TROUBLESHOOTING.md Section 3](docs/TROUBLESHOOTING.md#section-3-port-conflicts)
+4. **Import Errors**: See [TROUBLESHOOTING.md Section 4](docs/TROUBLESHOOTING.md#section-4-dependency-issues)
+5. **Vector store issues**: See [TROUBLESHOOTING.md Section 5](docs/TROUBLESHOOTING.md#section-5-chromadb--vector-store-issues)
+6. **Testing issues**: See [TROUBLESHOOTING.md Section 6](docs/TROUBLESHOOTING.md#section-6-testing-issues)
 
 ## 📚 Additional Resources
 
@@ -307,25 +643,78 @@ docker-compose logs api
 
 ## 🚀 Deployment
 
-### Production Deployment
-1. Set up environment variables
-2. Train your ML models
-3. Use Docker for containerized deployment
-4. Configure monitoring and logging
-5. Set up health checks and metrics
+For detailed deployment instructions, see [DEPLOYMENT.md](DEPLOYMENT.md).
 
-### Docker Commands
+### Quick Deploy Options
+
+#### Docker (Recommended for Local/Production)
+
+**Using docker-compose:**
+```bash
+docker-compose up -d
+```
+
+**Using master deployment script:**
+```powershell
+# Windows PowerShell
+.\deploy-master.ps1 --deploy docker
+
+# Or with options
+.\deploy-master.ps1 --deploy docker -Build -Run
+.\deploy-master.ps1 --deploy docker -Stop
+.\deploy-master.ps1 --deploy docker -Logs
+```
+
+**Manual Docker commands:**
 ```bash
 # Build image
 docker build -t wealtharena-api .
 
 # Run container
-docker run -p 8000:8000 --env-file .env wealtharena-api
-
-# Use docker-compose
-docker-compose up -d
+docker run -d --name wealtharena-api -p 8000:8000 --env-file .env wealtharena-api
 ```
+
+#### Azure App Service
+
+**Automated deployment:**
+```powershell
+.\deploy-master.ps1 --deploy azure `
+  -ResourceGroup "rg-wealtharena" `
+  -AppName "wealtharena-api" `
+  -Location "eastus"
+```
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for full deployment guide including Azure, Docker, and production configuration.
 
 ---
 
 **Happy Trading! 📈🤖**
+
+## Verified Metrics (local)
+
+| Endpoint | Success % | Avg (ms) | P50 | P90 | P95 | P99 |
+|----------|-----------|----------|-----|-----|-----|-----|
+| episodes | 0.0% | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 |
+| healthz | 0.0% | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 |
+| explain | 0.0% | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 |
+
+*Overall: 0.0% success, 0.0ms avg latency*
+*Last verified: 2025-11-06T12:47:27.485701*
+
+## Verified Metrics (latest run)
+
+| Component | Metric | Value |
+|-----------|--------|-------|
+| Chatbot | Inference(ms) avg | 1931.4 |
+| Chatbot | ROUGE-L | n/a |
+| Chatbot | BERT-F1 | n/a |
+| Retrieval | Latency(ms) avg | 550.7 |
+| Retrieval | MAP@5 | n/a |
+| Retrieval | MRR@5 | n/a |
+| Classification | Inference(ms) avg | n/a |
+| Classification | F1-macro | n/a |
+| Classification | AUC | n/a |
+| Overall | Success Rate % | 90.0 |
+| Overall | P50(ms) | 1312.0 |
+| Overall | P95(ms) | 3329.0 |
+

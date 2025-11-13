@@ -206,33 +206,29 @@ async def get_current_context(user_id: str = Query(...)):
             detail=f"Error retrieving context: {str(e)}"
         )
 
-# Note: Knowledge topic endpoints have been moved to app/api/knowledge.py
-# These endpoints are kept for backward compatibility but use the static context topics
-# Use /v1/knowledge/topics from knowledge.py for full functionality
-
-@router.get("/context/knowledge/topics", response_model=List[KnowledgeTopic])
-async def get_context_knowledge_topics():
-    """Get static list of knowledge topics (legacy endpoint - use /v1/knowledge/topics instead)"""
+@router.get("/knowledge/topics", response_model=List[KnowledgeTopic])
+async def get_knowledge_topics():
+    """Get static list of knowledge topics"""
     return [KnowledgeTopic(**topic) for topic in KNOWLEDGE_TOPICS]
 
-@router.get("/context/knowledge/topics/{topic_id}", response_model=KnowledgeTopic)
-async def get_context_knowledge_topic(topic_id: str):
-    """Get a specific knowledge topic by ID (legacy endpoint - use /v1/knowledge/topics/{id} instead)"""
+@router.get("/knowledge/topics/{topic_id}", response_model=KnowledgeTopic)
+async def get_knowledge_topic(topic_id: str):
+    """Get a specific knowledge topic by ID"""
     topic = next((t for t in KNOWLEDGE_TOPICS if t["id"] == topic_id), None)
     if not topic:
         raise HTTPException(status_code=404, detail="Topic not found")
     
     return KnowledgeTopic(**topic)
 
-@router.get("/context/knowledge/topics/category/{category}")
-async def get_context_topics_by_category(category: str):
-    """Get topics filtered by category (legacy endpoint - use /v1/knowledge/topics?category=X instead)"""
+@router.get("/knowledge/topics/category/{category}")
+async def get_topics_by_category(category: str):
+    """Get topics filtered by category"""
     filtered_topics = [t for t in KNOWLEDGE_TOPICS if t["category"].lower() == category.lower()]
     return [KnowledgeTopic(**topic) for topic in filtered_topics]
 
-@router.get("/context/knowledge/topics/difficulty/{difficulty}")
-async def get_context_topics_by_difficulty(difficulty: str):
-    """Get topics filtered by difficulty (legacy endpoint - use /v1/knowledge/topics?difficulty=X instead)"""
+@router.get("/knowledge/topics/difficulty/{difficulty}")
+async def get_topics_by_difficulty(difficulty: str):
+    """Get topics filtered by difficulty level"""
     filtered_topics = [t for t in KNOWLEDGE_TOPICS if t["difficulty"].lower() == difficulty.lower()]
     return [KnowledgeTopic(**topic) for topic in filtered_topics]
 
