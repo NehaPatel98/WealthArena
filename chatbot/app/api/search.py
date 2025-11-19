@@ -49,19 +49,27 @@ class SearchService:
     """Search service using Chroma vector database for PDF documents"""
     
     def __init__(self):
+        """Initialize search service - ChromaDB is lazy loaded on first use"""
         self.chroma_client = None
         self.chroma_collection = None
-        self._setup_chroma()
+        self._chroma_initialized = False
     
     def _setup_chroma(self):
-        """Setup Chroma client and collection if available"""
+        """Lazy setup of Chroma client and collection - only called when needed"""
+        if self._chroma_initialized:
+            return
+        
         if not CHROMA_AVAILABLE:
+            self._chroma_initialized = True
             return
         
         try:
             # Use shared path helper for consistent path resolution
             from ..utils.paths import get_vectorstore_path
             db_dir = get_vectorstore_path()
+            
+            # Ensure directory exists (lazy creation)
+            os.makedirs(db_dir, exist_ok=True)
             
             # Initialize Chroma client
             self.chroma_client = chromadb.PersistentClient(path=db_dir)
@@ -74,10 +82,12 @@ class SearchService:
             )
             
             print(f"Chroma client initialized successfully at {db_dir}")
+            self._chroma_initialized = True
         except Exception as e:
             print(f"Failed to initialize Chroma: {e}")
             self.chroma_client = None
             self.chroma_collection = None
+            self._chroma_initialized = True  # Mark as attempted to avoid retry loops
     
     async def search(self, query: str, k: int = 5) -> SearchResponse:
         """
@@ -93,6 +103,9 @@ class SearchService:
         Raises:
             HTTPException: 503 if vector store is unavailable
         """
+        # Lazy initialize ChromaDB on first search request
+        self._setup_chroma()
+        
         start_time = time.time()
         if self.chroma_collection is not None:
             result = await self._chroma_search(query, k)

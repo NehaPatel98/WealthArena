@@ -19,6 +19,8 @@ def _get_client():
         try:
             import chromadb
             from chromadb.utils import embedding_functions
+            # Ensure directory exists (lazy creation - only when ChromaDB is first used)
+            os.makedirs(DB_DIR, exist_ok=True)
             _client = chromadb.PersistentClient(path=DB_DIR)
             _collection = _client.get_or_create_collection(
                 name="wealtharena_kb",

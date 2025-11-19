@@ -12,6 +12,7 @@ This guide provides detailed solutions for common issues encountered when settin
 6. [Testing Issues](#section-6-testing-issues)
 7. [Data Pipeline Issues](#section-7-data-pipeline-issues)
 8. [API and Connection Issues](#section-8-api-and-connection-issues)
+9. [Azure App Service - Module Import Errors](#section-9-azure-app-service-module-import-errors)
 
 ---
 
@@ -656,6 +657,297 @@ CORS_ALLOWED_ORIGINS=http://localhost:3000,https://yourdomain.com
 - Check key format (Groq keys start with `gsk_`)
 - Ensure keys are not expired
 - Check rate limits on API provider
+
+---
+
+## Section 9: Azure App Service Module Import Errors
+
+### Symptoms
+
+- **HTTP 503 errors** when accessing your deployed Azure app
+- Azure portal displays: **"Application container failed to start"**
+- Error message: **"interpreter is unable to locate a module or package"**
+- Deployment logs show: `ModuleNotFoundError`, `ImportError`, or `No module named 'uvicorn'`
+- Application worked locally but fails after Azure deployment
+
+### Common Root Causes
+
+1. **Missing PYTHONPATH**: Relative imports (e.g., `from .api.chat import router`) require `PYTHONPATH=/home/site/wwwroot`
+2. **WEBSITE_RUN_FROM_PACKAGE blocking Oryx build**: This setting prevents Azure from installing dependencies
+3. **Oryx build not enabled**: Without `SCM_DO_BUILD_DURING_DEPLOYMENT=true`, dependencies won't install
+4. **Incorrect startup command**: Must properly invoke the application with correct module path
+5. **Build timeout or failure**: Dependencies may have failed to install due to timeout or errors
+6. **Missing GROQ_API_KEY**: Application requires this to start successfully
+
+### Quick Fix (Recommended)
+
+Use the automated fix script to resolve all configuration issues:
+
+```powershell
+# Navigate to project root
+cd C:\Users\DELL\Downloads\WealthArena
+
+# Run the fix script
+.\scripts\azure_fix_deployment.ps1 -AppName "wealtharena-api" -ResourceGroup "rg-wealtharena"
+```
+
+The script will:
+- ✅ Verify Azure CLI and login status
+- ✅ Check if the web app exists
+- ✅ Display current configuration
+- ✅ Fix all critical settings automatically
+- ✅ Remove problematic settings
+- ✅ Set correct startup command
+- ✅ Restart the app
+- ✅ Wait for health check to pass
+
+### Diagnostic Check
+
+Before applying fixes, diagnose the current configuration:
+
+```powershell
+.\scripts\azure_verify_config.ps1 -AppName "wealtharena-api" -ResourceGroup "rg-wealtharena"
+```
+
+This will check:
+- Azure CLI installation and login status
+- Web app state and configuration
+- All critical app settings
+- Startup command configuration
+- Python runtime version
+- Health endpoint availability
+- Recent deployment logs
+
+### Manual Fix (Step-by-Step)
+
+If you prefer to fix issues manually:
+
+#### Step 1: Check Current App Settings
+
+```bash
+az webapp config appsettings list \
+  --name wealtharena-api \
+  --resource-group rg-wealtharena \
+  --query "[?name=='SCM_DO_BUILD_DURING_DEPLOYMENT' || name=='WEBSITE_RUN_FROM_PACKAGE' || name=='PYTHONPATH' || name=='GROQ_API_KEY']"
+```
+
+#### Step 2: Enable Oryx Build
+
+```bash
+az webapp config appsettings set \
+  --name wealtharena-api \
+  --resource-group rg-wealtharena \
+  --settings SCM_DO_BUILD_DURING_DEPLOYMENT=true
+```
+
+#### Step 3: Remove WEBSITE_RUN_FROM_PACKAGE
+
+```bash
+# Check if it exists
+az webapp config appsettings list \
+  --name wealtharena-api \
+  --resource-group rg-wealtharena \
+  --query "[?name=='WEBSITE_RUN_FROM_PACKAGE']"
+
+# Remove it (critical!)
+az webapp config appsettings delete \
+  --name wealtharena-api \
+  --resource-group rg-wealtharena \
+  --setting-names WEBSITE_RUN_FROM_PACKAGE
+```
+
+#### Step 4: Set PYTHONPATH
+
+```bash
+az webapp config appsettings set \
+  --name wealtharena-api \
+  --resource-group rg-wealtharena \
+  --settings PYTHONPATH=/home/site/wwwroot
+```
+
+#### Step 5: Set Required Environment Variables
+
+```bash
+# Set GROQ_API_KEY (REQUIRED)
+az webapp config appsettings set \
+  --name wealtharena-api \
+  --resource-group rg-wealtharena \
+  --settings GROQ_API_KEY="gsk_your_actual_key_here"
+
+# Set CHROMA_PERSIST_DIR
+az webapp config appsettings set \
+  --name wealtharena-api \
+  --resource-group rg-wealtharena \
+  --settings CHROMA_PERSIST_DIR="/home/data/vectorstore"
+```
+
+**Important**: Replace `gsk_your_actual_key_here` with your actual Groq API key from https://console.groq.com/
+
+#### Step 6: Set Startup Command
+
+```bash
+# Check current startup command
+az webapp config show \
+  --name wealtharena-api \
+  --resource-group rg-wealtharena \
+  --query "appCommandLine"
+
+# Set correct startup command
+az webapp config set \
+  --name wealtharena-api \
+  --resource-group rg-wealtharena \
+  --startup-file "bash startup.sh"
+```
+
+#### Step 7: Restart and Monitor
+
+```bash
+# Restart the app
+az webapp restart --name wealtharena-api --resource-group rg-wealtharena
+
+# Monitor logs (wait for startup)
+az webapp log tail --name wealtharena-api --resource-group rg-wealtharena
+```
+
+Look for these indicators in logs:
+- ✅ **Oryx build output**: Shows dependency installation
+- ✅ **"Starting gunicorn"**: Application startup
+- ✅ **No import errors**: All modules load successfully
+- ❌ **"ModuleNotFoundError"**: Still has configuration issues
+
+#### Step 8: Test Health Endpoint
+
+```bash
+# Wait 1-2 minutes after restart, then test
+curl https://wealtharena-api.azurewebsites.net/healthz
+
+# Expected response:
+# {"status":"ok"}
+```
+
+### Verification Checklist
+
+After applying fixes, verify all settings are correct:
+
+- [ ] `SCM_DO_BUILD_DURING_DEPLOYMENT` = `true`
+- [ ] `WEBSITE_RUN_FROM_PACKAGE` is **NOT** set (removed)
+- [ ] `PYTHONPATH` = `/home/site/wwwroot`
+- [ ] `GROQ_API_KEY` is set and starts with `gsk_`
+- [ ] `CHROMA_PERSIST_DIR` = `/home/data/vectorstore`
+- [ ] Startup command is `bash startup.sh` or correct gunicorn command
+- [ ] Oryx build completed successfully (visible in logs)
+- [ ] Health endpoint returns HTTP 200 with `{"status":"ok"}`
+- [ ] API docs accessible at `/docs`
+- [ ] No import errors in application logs
+
+### Common Issues After Fix
+
+**Issue: Health check still fails after 5 minutes**
+
+Possible causes:
+1. **Oryx build still in progress**: First deployment can take 10-15 minutes
+2. **GROQ_API_KEY invalid**: Verify the key is correct and active
+3. **Build failed**: Check logs for compilation errors
+
+```bash
+# Check if build completed
+az webapp log tail --name wealtharena-api --resource-group rg-wealtharena | grep -i "oryx"
+
+# Look for: "Running oryx build..." and "Done."
+```
+
+**Issue: App crashes immediately after startup**
+
+Check logs for:
+```bash
+# View detailed logs
+az webapp log download \
+  --name wealtharena-api \
+  --resource-group rg-wealtharena \
+  --log-file app-logs.zip
+
+# Extract and review for errors
+```
+
+Common causes:
+- Missing or invalid GROQ_API_KEY
+- Import errors (PYTHONPATH still incorrect)
+- Port binding issues
+- Dependency installation failure
+
+**Issue: Logs show "No module named 'app'"**
+
+This indicates PYTHONPATH is still not set correctly:
+
+```bash
+# Verify PYTHONPATH setting
+az webapp config appsettings list \
+  --name wealtharena-api \
+  --resource-group rg-wealtharena \
+  --query "[?name=='PYTHONPATH']"
+
+# Should return: /home/site/wwwroot
+```
+
+### Advanced Troubleshooting
+
+#### Access Kudu Console
+
+1. Navigate to: `https://wealtharena-api.scm.azurewebsites.net`
+2. Go to **Debug Console** → **CMD** or **PowerShell**
+3. Navigate to `/home/site/wwwroot`
+4. Check files are deployed correctly
+5. Try importing modules manually:
+   ```bash
+   cd /home/site/wwwroot
+   python3 -c "import app.main; print('Success')"
+   ```
+
+#### Check Build Logs in Kudu
+
+1. Go to **Kudu Console**: `https://wealtharena-api.scm.azurewebsites.net`
+2. Navigate to **Tools** → **Deployment logs**
+3. Look for Oryx build output
+4. Verify all dependencies installed successfully
+
+#### Export Configuration for Support
+
+```powershell
+.\scripts\azure_verify_config.ps1 `
+  -AppName "wealtharena-api" `
+  -ResourceGroup "rg-wealtharena" `
+  -ExportConfig
+```
+
+This creates a JSON file with complete configuration for debugging.
+
+### Prevention
+
+To avoid these issues in future deployments:
+
+1. **Always use the master deployment script**:
+   ```powershell
+   .\deploy-master.ps1 --deploy azure `
+     -ResourceGroup "rg-wealtharena" `
+     -AppName "wealtharena-api"
+   ```
+
+2. **Never manually set WEBSITE_RUN_FROM_PACKAGE**: This setting is incompatible with Oryx builds
+
+3. **Verify configuration before deployment**:
+   ```powershell
+   .\scripts\azure_verify_config.ps1 -AppName "wealtharena-api" -ResourceGroup "rg-wealtharena"
+   ```
+
+4. **Monitor first deployment carefully**: Initial builds take longer due to dependency compilation
+
+5. **Keep deployment logs**: Save logs for reference if issues occur
+
+### Related Documentation
+
+- [DEPLOYMENT.md](../DEPLOYMENT.md#module-import-errors-application-container-failed-to-start) - Detailed deployment guide
+- [startup.sh](../startup.sh) - Enhanced startup script with error handling
+- [deploy-master.ps1](../deploy-master.ps1) - Master deployment script
 
 ---
 

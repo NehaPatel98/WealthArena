@@ -16,11 +16,25 @@ This guide covers deploying WealthArena using the **master deployment script** (
 
 ### Required Environment Variables
 
-Create a `.env` file with the following variables:
+**⚠️ Security Warning:** Never commit your `.env` file to version control. The `.env` file is already included in `.gitignore`. If you have accidentally committed a `.env` file containing a real `GROQ_API_KEY`, you must:
+1. Rotate the exposed API key immediately in the Groq console (https://console.groq.com/)
+2. Remove the real key from your `.env` file and replace it with a placeholder
+3. Ensure `.env` remains in `.gitignore` to prevent future commits
+
+**⚠️ Important:** Even with `.gitignore` protection, local `.env` files with real secrets pose security risks:
+- Files can be accidentally shared via project folders, backups, or screenshots
+- Use placeholders in `.env` files; real keys should only exist in:
+  - Azure App Settings (for production)
+  - Environment variables (for local development)
+  - Secure vaults (Azure Key Vault recommended for production)
+
+**For Azure deployments:** The `.env` file is used locally by deployment scripts to read the key and set it in Azure App Settings. After deployment, the real key exists only in Azure, not in your local `.env` file.
+
+Create a `.env` file with the following variables (use placeholder values, not real keys):
 
 ```env
 # Required
-GROQ_API_KEY=gsk_your_actual_key_here
+GROQ_API_KEY=gsk_your_actual_key_here  # Replace with your actual key from https://console.groq.com/
 CHROMA_PERSIST_DIR=/app/data/vectorstore  # Use absolute path in containers (Docker)
 # For Azure: CHROMA_PERSIST_DIR=/home/data/vectorstore (auto-set by deploy-master.ps1)
 
@@ -37,7 +51,7 @@ CORS_ALLOWED_ORIGINS=https://yourdomain.com,https://app.yourdomain.com
 
 ### System Requirements
 
-- **Python**: 3.12+
+- **Python**: 3.12 (recommended)
 - **Memory**: 2GB+ (4GB recommended for production)
 - **Disk**: 5GB+ for vector store and dependencies
 - **Network**: Outbound HTTPS for API calls
@@ -159,7 +173,7 @@ docker run -d \
 
 **Important Notes:**
 - `AppName` must be globally unique and becomes part of your URL: `https://your-app-name.azurewebsites.net`
-- Initial deployment takes 5-10 minutes and includes automatic resource creation, environment configuration, and health check verification
+- Initial deployment takes 15-20 minutes due to chromadb dependency compilation. Subsequent deployments will be faster (3-5 minutes).
 - The script preserves all working functionality and doesn't modify application code
 
 **Troubleshooting:**
@@ -290,6 +304,8 @@ az webapp deployment source config-zip \
   --name wealtharena-api \
   --src deploy.zip
 ```
+
+**Note on `.deployment` file:** The repository includes a `.deployment` file, which is primarily used for **Kudu-based deployments** (Git-based deployments via Azure DevOps or GitHub Actions). This file is **not required** for the ZIP deployment path used by `deploy-master.ps1`. The master script handles Python runtime configuration directly via Azure CLI (`--runtime "PYTHON|3.12"`), so the `.deployment` file is not used during ZIP deployments. If you're using Git-based deployments with Kudu, the `.deployment` file may be helpful, but for the standard ZIP deployment workflow, it can be safely ignored.
 
 #### 6. Verify Deployment
 
@@ -625,10 +641,153 @@ docker logs wealtharena-api
 
 ### Azure Issues
 
+#### Module Import Errors (Application container failed to start)
+
+**Symptoms:**
+- HTTP 503 errors when accessing the app
+- Azure portal shows: "Application container failed to start"
+- Error message: "interpreter is unable to locate a module or package"
+- Logs show: `ModuleNotFoundError` or `ImportError`
+
+**Root Causes:**
+1. **Missing or incorrect PYTHONPATH**: Relative imports require PYTHONPATH to be set to `/home/site/wwwroot`
+2. **WEBSITE_RUN_FROM_PACKAGE blocking Oryx build**: This setting prevents dependency installation
+3. **Oryx build not enabled**: `SCM_DO_BUILD_DURING_DEPLOYMENT` must be set to `true`
+4. **Incorrect startup command**: Must use `startup.sh` or proper gunicorn command
+5. **Build timeout or failure**: Dependencies may not have been installed successfully
+
+**Quick Fix (Automated):**
+Use the automatic fix script to resolve all configuration issues:
+```powershell
+# Standard usage (reads GROQ_API_KEY from .env file)
+.\scripts\azure_fix_deployment.ps1 -AppName "wealtharena-api" -ResourceGroup "rg-wealtharena"
+
+# Skip automatic restart after applying fixes
+.\scripts\azure_fix_deployment.ps1 -AppName "wealtharena-api" -ResourceGroup "rg-wealtharena" -SkipRestart
+```
+
+**Note:** The script automatically reads `GROQ_API_KEY` from the `.env` file in the project root. Ensure your `.env` file contains a valid `GROQ_API_KEY` before running the script.
+
+For the master deployment script, use the `-AutoFixOnFailure` parameter to automatically run the fix script when configuration issues are detected:
+```powershell
+.\deploy-master.ps1 --deploy azure `
+  -ResourceGroup "rg-wealtharena" `
+  -AppName "wealtharena-api" `
+  -AutoFixOnFailure
+```
+
+**Diagnostic Check:**
+Verify your current configuration:
+```powershell
+.\scripts\azure_verify_config.ps1 -AppName "wealtharena-api" -ResourceGroup "rg-wealtharena"
+```
+
+**Manual Fix (Step by Step):**
+
+1. **Verify SCM_DO_BUILD_DURING_DEPLOYMENT is enabled:**
+   ```bash
+   # Check current setting
+   az webapp config appsettings list --name wealtharena-api --resource-group rg-wealtharena --query "[?name=='SCM_DO_BUILD_DURING_DEPLOYMENT']"
+   
+   # Set if missing or false
+   az webapp config appsettings set \
+     --name wealtharena-api \
+     --resource-group rg-wealtharena \
+     --settings SCM_DO_BUILD_DURING_DEPLOYMENT=true
+   ```
+
+2. **Remove WEBSITE_RUN_FROM_PACKAGE (if present):**
+   ```bash
+   # Check if it exists
+   az webapp config appsettings list --name wealtharena-api --resource-group rg-wealtharena --query "[?name=='WEBSITE_RUN_FROM_PACKAGE']"
+   
+   # Remove it
+   az webapp config appsettings delete \
+     --name wealtharena-api \
+     --resource-group rg-wealtharena \
+     --setting-names WEBSITE_RUN_FROM_PACKAGE
+   ```
+
+3. **Set PYTHONPATH:**
+   ```bash
+   az webapp config appsettings set \
+     --name wealtharena-api \
+     --resource-group rg-wealtharena \
+     --settings PYTHONPATH=/home/site/wwwroot
+   ```
+
+4. **Verify startup command:**
+   ```bash
+   # Check current startup command
+   az webapp config show --name wealtharena-api --resource-group rg-wealtharena --query "appCommandLine"
+   
+   # Set correct startup command
+   az webapp config set \
+     --name wealtharena-api \
+     --resource-group rg-wealtharena \
+     --startup-file "bash startup.sh"
+   ```
+
+5. **Verify required environment variables:**
+   ```bash
+   # Check GROQ_API_KEY
+   az webapp config appsettings list --name wealtharena-api --resource-group rg-wealtharena --query "[?name=='GROQ_API_KEY']"
+   
+   # Set if missing (REQUIRED)
+   az webapp config appsettings set \
+     --name wealtharena-api \
+     --resource-group rg-wealtharena \
+     --settings GROQ_API_KEY="gsk_your_actual_key_here"
+   ```
+
+6. **Restart the app:**
+   ```bash
+   az webapp restart --name wealtharena-api --resource-group rg-wealtharena
+   ```
+
+7. **Monitor deployment logs:**
+   ```bash
+   az webapp log tail --name wealtharena-api --resource-group rg-wealtharena
+   ```
+   
+   Look for:
+   - ✅ Oryx build output showing dependency installation
+   - ✅ "Starting gunicorn" or startup script output
+   - ✅ No import errors
+   
+8. **Test the health endpoint:**
+   ```bash
+   curl https://wealtharena-api.azurewebsites.net/healthz
+   # Expected: {"status":"ok"}
+   ```
+
+**Verification Checklist:**
+- [ ] `SCM_DO_BUILD_DURING_DEPLOYMENT` = `true`
+- [ ] `WEBSITE_RUN_FROM_PACKAGE` is NOT set
+- [ ] `PYTHONPATH` = `/home/site/wwwroot`
+- [ ] `GROQ_API_KEY` is set and starts with `gsk_`
+- [ ] `CHROMA_PERSIST_DIR` = `/home/data/vectorstore`
+- [ ] Startup command uses `startup.sh` or correct gunicorn command
+- [ ] Oryx build completed successfully (check logs)
+- [ ] Health endpoint returns 200 OK
+
+**Still Having Issues?**
+See the comprehensive troubleshooting guide: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md#section-9-azure-app-service-module-import-errors)
+
+#### Other Azure Issues
+
 **"No module named uvicorn":**
 - Ensure `WEBSITE_RUN_FROM_PACKAGE` is removed
 - Verify `SCM_DO_BUILD_DURING_DEPLOYMENT=true`
 - Check deployment logs for Oryx build output
+
+**Deployment hangs during Oryx build:**
+- The `chromadb` dependency has heavy native extensions that can take 10-15 minutes to compile on Azure's B1 tier
+- The `SCM_BUILD_TIMEOUT` setting extends the build timeout to 30 minutes to accommodate this
+- First deployment will be slower; subsequent deployments are faster due to Azure's build caching
+- Consider temporarily upgrading to B2 or S1 tier for faster initial deployment
+- Monitor build progress using: `az webapp log tail --name wealtharena-api --resource-group rg-wealtharena`
+- The deployment is progressing normally if you see Oryx build output in the logs, even if it appears stuck
 
 **Application not starting:**
 ```bash

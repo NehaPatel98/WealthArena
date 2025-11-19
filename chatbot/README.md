@@ -688,6 +688,64 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for full deployment guide including Azure, Do
 
 ---
 
+## 🔧 Azure Deployment Troubleshooting
+
+### Common Issue: Module Import Errors (HTTP 503)
+
+If your Azure deployment shows **"Application container failed to start"** with module import errors:
+
+**Symptoms:**
+- HTTP 503 errors when accessing the app
+- Azure portal error: "interpreter is unable to locate a module or package"
+- Logs show: `ModuleNotFoundError` or `No module named 'uvicorn'`
+
+**Quick Fix (Recommended):**
+
+Use the automated fix script:
+```powershell
+.\scripts\azure_fix_deployment.ps1 -AppName "wealtharena-api" -ResourceGroup "rg-wealtharena"
+```
+
+This script will:
+- ✅ Check your current configuration
+- ✅ Fix all critical settings automatically
+- ✅ Remove problematic configurations
+- ✅ Restart the app
+- ✅ Wait for health check to pass
+
+**Diagnostic Check:**
+
+Verify your configuration before applying fixes:
+```powershell
+.\scripts\azure_verify_config.ps1 -AppName "wealtharena-api" -ResourceGroup "rg-wealtharena"
+```
+
+**Manual Quick Fix:**
+
+If you prefer manual fixes:
+```bash
+# 1. Enable Oryx build
+az webapp config appsettings set --name wealtharena-api --resource-group rg-wealtharena --settings SCM_DO_BUILD_DURING_DEPLOYMENT=true
+
+# 2. Remove blocking setting
+az webapp config appsettings delete --name wealtharena-api --resource-group rg-wealtharena --setting-names WEBSITE_RUN_FROM_PACKAGE
+
+# 3. Set PYTHONPATH
+az webapp config appsettings set --name wealtharena-api --resource-group rg-wealtharena --settings PYTHONPATH=/home/site/wwwroot
+
+# 4. Restart
+az webapp restart --name wealtharena-api --resource-group rg-wealtharena
+
+# 5. Check logs
+az webapp log tail --name wealtharena-api --resource-group rg-wealtharena
+```
+
+**For detailed troubleshooting**, see:
+- [DEPLOYMENT.md - Module Import Errors](DEPLOYMENT.md#module-import-errors-application-container-failed-to-start)
+- [TROUBLESHOOTING.md - Azure App Service](docs/TROUBLESHOOTING.md#section-9-azure-app-service-module-import-errors)
+
+---
+
 **Happy Trading! 📈🤖**
 
 ## Verified Metrics (local)

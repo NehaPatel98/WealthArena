@@ -40,6 +40,17 @@ async def lifespan(app: FastAPI):
     logger = logging.getLogger(__name__)
     scheduler = None
     
+    # Ensure required directories exist on startup (for Azure and other deployments)
+    # Note: vectorstore directory creation is lazy - only created when ChromaDB is first used
+    # This prevents ChromaDB initialization at startup, allowing faster app startup
+    try:
+        # Ensure game_state directory exists (lightweight, no ChromaDB dependency)
+        game_state_dir = "/home/data/game_state"
+        os.makedirs(game_state_dir, exist_ok=True)
+        logger.info(f"Ensured game_state directory exists: {game_state_dir}")
+    except Exception as e:
+        logger.warning(f"Failed to create game_state directory on startup (may already exist): {e}")
+    
     enable_scheduler = os.getenv('ENABLE_BACKGROUND_SCHEDULER', 'false').lower() in ('true', '1', 'yes')
     if enable_scheduler:
         logger.info("Starting background scheduler...")
