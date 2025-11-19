@@ -450,10 +450,10 @@ python scripts/print_metrics.py --url http://127.0.0.1:8001
 #### Solution 4: Run Smoke Tests
 
 ```powershell
-# Basic endpoint tests
-python scripts/smoke_local.py
+# Comprehensive API endpoint tests (waits for server if needed)
+python scripts/sanity_check.py --wait
 
-# API sanity check
+# Or run tests immediately (server must be running)
 python scripts/sanity_check.py
 ```
 

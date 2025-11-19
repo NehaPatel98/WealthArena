@@ -15,6 +15,26 @@ from pathlib import Path
 # Add the parent directory to the path so we can import from app
 sys.path.append(str(Path(__file__).parent.parent))
 
+
+def wait_for_server(url: str, timeout: int = 60) -> bool:
+    """Wait for the server to be ready (from smoke_local.py)."""
+    print(f"Waiting for server at {url} (timeout: {timeout}s)...")
+    
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        try:
+            response = httpx.get(f"{url}/healthz", timeout=5)
+            if response.status_code == 200:
+                print("Server is ready!")
+                return True
+        except (httpx.ConnectError, httpx.TimeoutException):
+            pass
+        
+        time.sleep(1)
+    
+    print(f"Server not ready after {timeout}s")
+    return False
+
 class SanityChecker:
     """Sanity checker for WealthArena API endpoints"""
     
@@ -282,7 +302,16 @@ async def main():
     
     parser = argparse.ArgumentParser(description="WealthArena API Sanity Check")
     parser.add_argument("--url", default="http://localhost:8000", help="API base URL")
+    parser.add_argument("--wait", action="store_true", help="Wait for server to be ready before testing")
+    parser.add_argument("--wait-timeout", type=int, default=60, help="Timeout in seconds for waiting (default: 60)")
     args = parser.parse_args()
+    
+    # Wait for server if requested (from smoke_local.py)
+    if args.wait:
+        if not wait_for_server(args.url, timeout=args.wait_timeout):
+            print("Server is not running or not ready")
+            print("Start the server with: powershell -ExecutionPolicy Bypass -File scripts/dev_up.ps1")
+            sys.exit(1)
     
     async with SanityChecker(args.url) as checker:
         result = await checker.run_all_tests()

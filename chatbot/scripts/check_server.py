@@ -12,7 +12,9 @@ except AttributeError:
     pass
 
 import json
+import socket
 from pathlib import Path
+from typing import Optional
 from urllib import request, error
 
 def check_server(url="http://127.0.0.1:8000"):
@@ -107,6 +109,45 @@ def check_env():
         print(f"❌ Error reading .env file: {e}")
         return False
 
+def get_venv_python() -> Optional[str]:
+    """
+    Get the path to the Python interpreter in the virtual environment.
+    
+    Returns:
+        Path to venv Python interpreter if .venv exists, None otherwise.
+    """
+    venv_path = Path(".venv")
+    if not venv_path.exists():
+        return None
+    
+    if sys.platform == "win32":
+        python_exe = venv_path / "Scripts" / "python.exe"
+    else:
+        python_exe = venv_path / "bin" / "python"
+    
+    if python_exe.exists():
+        return str(python_exe.resolve())
+    return None
+
+def check_port_available(port: int, host: str = "127.0.0.1") -> bool:
+    """
+    Check if a port is available for binding.
+    
+    Args:
+        port: Port number to check
+        host: Host address (default: 127.0.0.1)
+    
+    Returns:
+        True if port is available, False otherwise
+    """
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(1)
+            result = sock.connect_ex((host, port))
+            return result != 0  # Port is available if connection fails
+    except Exception:
+        return False
+
 def check_metrics_file():
     """Check if metrics file exists and is valid (informational only)"""
     metrics_path = Path("metrics/runtime_http.json")
@@ -148,6 +189,20 @@ def main():
     print()
     
     venv_ok = check_venv()
+    print()
+    
+    # Check venv Python path (from bootstrap_checks)
+    venv_python = get_venv_python()
+    if venv_python:
+        print(f"ℹ️  Virtual environment Python: {venv_python}")
+    print()
+    
+    # Check port availability
+    port_8000_available = check_port_available(8000)
+    if port_8000_available:
+        print("✅ Port 8000 is available")
+    else:
+        print("⚠️  Port 8000 appears to be in use (server may be running)")
     print()
     
     vectorstore_ok = check_vectorstore()

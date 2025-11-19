@@ -359,10 +359,14 @@ Arguments:
 
 ### Basic Endpoint Tests
 
-Run basic endpoint tests (uses port 8000 by default):
+Run comprehensive API endpoint tests (uses port 8000 by default):
 
 ```powershell
-python scripts/smoke_local.py
+# Wait for server and run tests
+python scripts/sanity_check.py --wait
+
+# Or run tests immediately (server must be running)
+python scripts/sanity_check.py
 ```
 
 ### Run Tests
@@ -565,7 +569,7 @@ WealthArena/
 │   ├── initial_data_load.py    # One-time data loading
 │   ├── verify_data_pipeline.py # Pre-deployment checks
 │   ├── run_pipeline.py         # Data pipeline orchestrator
-│   ├── smoke_local.py     # API testing
+│   ├── sanity_check.py    # API endpoint testing
 │   └── export_openapi.py  # API documentation
 ├── tests/                 # Test files
 ├── data/                  # Runtime data (gitignored)

@@ -167,6 +167,9 @@ Thumbs.db
 app-logs/
 deploy_output.txt
 deploy.zip
+*.backup
+app-logs.zip
+azure-logs.zip
 *.log
 
 # Azure deployment files
