@@ -18,7 +18,7 @@ $content = Get-Content $envFile -Raw
 
 # Pattern to match real Groq API keys (starts with gsk_ and is long)
 # Match the specific exposed key
-$exposedKey = "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"
+$exposedKey = "______"
 $oldValue = "GROQ_API_KEY=$exposedKey"
 $newValue = "GROQ_API_KEY=gsk_your_actual_key_here"
 
