@@ -86,9 +86,8 @@ def build_market_group(dag: DAG, market_name: str, cfg: dict):
 default_args = {"owner":"data-eng","depends_on_past":False,"email_on_failure":False,"email_on_retry":False,"retries":0}
 
 UTC = pendulum.timezone("UTC")
-CRON_UTC = "0 15 * * *"  # 02:00 Australia/Sydney (AEDT) == 15:00 UTC
-START_DATE_UTC = pendulum.datetime(2025, 11, 12, 15, 0, tz=UTC)
-
+CRON_UTC = "5 21 * * *"  # 21:05 UTC daily
+START_DATE_UTC = pendulum.datetime(2025, 11, 12, 21, 5, tz=UTC)
 
 with DAG(
     dag_id="multi_market_data_pipeline",
