@@ -166,7 +166,7 @@ The app uses Expo configuration in `app.json` for:
 - Dark Mode support
 light mode support
 
-## 📱 Deployment
+##  Deployment
 
 ### **Mobile App Stores**
 ```bash
@@ -193,7 +193,7 @@ eas hosting:configure
 eas hosting:deploy
 ```
 
-## 🤝 Contributing
+##  Contributing
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)

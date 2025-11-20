@@ -567,21 +567,35 @@ function Invoke-Phase2-Dependencies {
         Write-StatusMessage "Upgrading pip for better package compatibility..." "INFO"
         python -m pip install --upgrade pip --quiet 2>&1 | Out-Null
         
-        # Try installing with pre-built wheels first (avoids Rust compilation)
-        Write-StatusMessage "Installing dependencies with pre-built wheels..." "INFO"
-        $pipOutput = pip install --only-binary :all: -r requirements.txt 2>&1
+        # Install key packages first that might have version conflicts with pre-built wheels
+        Write-StatusMessage "Installing core packages first..." "INFO"
+        pip install "numpy>=2.1.0" "pandas>=2.0.0" --quiet 2>&1 | Out-Null
+        
+        # Try installing with pre-built wheels, but allow source builds for packages that need it
+        Write-StatusMessage "Installing remaining dependencies..." "INFO"
+        $pipOutput = pip install -r requirements.txt --prefer-binary 2>&1
         $exitCode = $LASTEXITCODE
         
         if ($exitCode -ne 0) {
-            Write-StatusMessage "Pre-built wheels not available, trying standard install..." "WARNING"
-            # Fallback: Try standard install (may require Rust for pydantic-core)
-            # But first, try to install pydantic-core from a pre-built wheel if available
-            Write-StatusMessage "Attempting to install pydantic-core separately..." "INFO"
-            pip install --only-binary pydantic-core pydantic-core 2>&1 | Out-Null
+            Write-StatusMessage "Standard install failed, trying with relaxed constraints..." "WARNING"
+            # Try installing with updated numpy/pandas versions that have pre-built wheels
+            Write-StatusMessage "Installing compatible package versions..." "INFO"
+            pip install "numpy>=2.1.0" "pandas>=2.2.0" "pydantic>=2.5.0" --quiet 2>&1 | Out-Null
             
-            # Now try installing requirements again
-            $pipOutput = pip install -r requirements.txt 2>&1
+            # Create a temporary requirements file with relaxed constraints
+            $tempRequirements = Join-Path (Join-Path $script:ScriptDir "chatbot") "requirements_temp.txt"
+            $originalRequirements = Get-Content (Join-Path (Join-Path $script:ScriptDir "chatbot") "requirements.txt") -Raw
+            $modifiedRequirements = $originalRequirements -replace 'numpy>=1\.24\.0,<2\.0\.0', 'numpy>=2.1.0' -replace 'pandas>=2\.0\.0,<2\.3\.0', 'pandas>=2.2.0'
+            $modifiedRequirements | Set-Content -Path $tempRequirements
+            
+            # Try installing with modified requirements
+            $pipOutput = pip install -r $tempRequirements --prefer-binary 2>&1
             $exitCode = $LASTEXITCODE
+            
+            # Clean up temp file
+            if (Test-Path $tempRequirements) {
+                Remove-Item $tempRequirements -Force
+            }
         }
         
         if ($exitCode -eq 0) {
@@ -590,9 +604,9 @@ function Invoke-Phase2-Dependencies {
         }
         else {
             Write-StatusMessage "Chatbot dependency installation failed" "ERROR"
-            Write-ColorOutput "  Error: Some packages require Rust to compile (pydantic-core)" $Yellow
+            Write-ColorOutput "  Error: Package version conflicts or missing pre-built wheels" $Yellow
             Write-ColorOutput "  Solution options:" $Yellow
-            Write-ColorOutput "    1. Install Rust: https://rustup.rs/" $White
+            Write-ColorOutput "    1. Install Rust: https://rustup.rs/ (for pydantic-core compilation)" $White
             Write-ColorOutput "    2. Use Python 3.11 or 3.12 (better pre-built wheel support)" $White
             Write-ColorOutput "    3. Continue anyway - chatbot may work with partial dependencies" $White
             $results.Chatbot = $false
