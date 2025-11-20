@@ -374,8 +374,29 @@ router.get('/game/episodes', async (req: Request, res: Response) => {
 router.post('/game/start', async (req: Request, res: Response) => {
   try {
     // Validate and sanitize CHATBOT_API_URL to prevent URL injection
+    // Use allowlist of trusted domains and protocols
+    const allowedProtocols = ['http:', 'https:'];
+    const allowedHosts = ['localhost', '127.0.0.1', '10.0.2.2']; // Add your trusted hosts
+    
     const chatbotUrl = new URL(CHATBOT_API_URL);
-    const gameStartUrl = new URL('/v1/game/start', chatbotUrl.origin + chatbotUrl.pathname);
+    
+    // Validate protocol and hostname
+    if (!allowedProtocols.includes(chatbotUrl.protocol)) {
+      throw new Error('Invalid protocol in CHATBOT_API_URL');
+    }
+    
+    // In development, allow localhost and local IPs. In production, restrict further.
+    const isDevelopment = process.env.NODE_ENV === 'development';
+    if (!isDevelopment) {
+      // In production, you should have specific trusted domains
+      // For now, we'll allow the configured URL but log a warning
+      console.warn('Production environment detected. Ensure CHATBOT_API_URL points to trusted domain.');
+    } else if (!allowedHosts.includes(chatbotUrl.hostname) && !chatbotUrl.hostname.match(/^192\.168\.\d+\.\d+$/)) {
+      throw new Error('Invalid hostname in CHATBOT_API_URL');
+    }
+    
+    // Construct the endpoint URL safely
+    const gameStartUrl = new URL('/v1/game/start', chatbotUrl.origin);
     const response = await axios.post(gameStartUrl.toString(), req.body);
     res.json({ success: true, data: response.data });
   } catch (error: unknown) {
@@ -393,8 +414,23 @@ router.post('/game/start', async (req: Request, res: Response) => {
 router.post('/game/tick', async (req: Request, res: Response) => {
   try {
     // Validate and sanitize CHATBOT_API_URL to prevent URL injection
+    const allowedProtocols = ['http:', 'https:'];
+    const allowedHosts = ['localhost', '127.0.0.1', '10.0.2.2'];
+    
     const chatbotUrl = new URL(CHATBOT_API_URL);
-    const gameTickUrl = new URL('/v1/game/tick', chatbotUrl.origin + chatbotUrl.pathname);
+    
+    if (!allowedProtocols.includes(chatbotUrl.protocol)) {
+      throw new Error('Invalid protocol in CHATBOT_API_URL');
+    }
+    
+    const isDevelopment = process.env.NODE_ENV === 'development';
+    if (!isDevelopment) {
+      console.warn('Production environment detected. Ensure CHATBOT_API_URL points to trusted domain.');
+    } else if (!allowedHosts.includes(chatbotUrl.hostname) && !chatbotUrl.hostname.match(/^192\.168\.\d+\.\d+$/)) {
+      throw new Error('Invalid hostname in CHATBOT_API_URL');
+    }
+    
+    const gameTickUrl = new URL('/v1/game/tick', chatbotUrl.origin);
     const response = await axios.post(gameTickUrl.toString(), req.body);
     res.json({ success: true, data: response.data });
   } catch (error: unknown) {
@@ -412,8 +448,23 @@ router.post('/game/tick', async (req: Request, res: Response) => {
 router.post('/game/trade', async (req: Request, res: Response) => {
   try {
     // Validate and sanitize CHATBOT_API_URL to prevent URL injection
+    const allowedProtocols = ['http:', 'https:'];
+    const allowedHosts = ['localhost', '127.0.0.1', '10.0.2.2'];
+    
     const chatbotUrl = new URL(CHATBOT_API_URL);
-    const gameTradeUrl = new URL('/v1/game/trade', chatbotUrl.origin + chatbotUrl.pathname);
+    
+    if (!allowedProtocols.includes(chatbotUrl.protocol)) {
+      throw new Error('Invalid protocol in CHATBOT_API_URL');
+    }
+    
+    const isDevelopment = process.env.NODE_ENV === 'development';
+    if (!isDevelopment) {
+      console.warn('Production environment detected. Ensure CHATBOT_API_URL points to trusted domain.');
+    } else if (!allowedHosts.includes(chatbotUrl.hostname) && !chatbotUrl.hostname.match(/^192\.168\.\d+\.\d+$/)) {
+      throw new Error('Invalid hostname in CHATBOT_API_URL');
+    }
+    
+    const gameTradeUrl = new URL('/v1/game/trade', chatbotUrl.origin);
     const response = await axios.post(gameTradeUrl.toString(), req.body);
     res.json({ success: true, data: response.data });
   } catch (error: unknown) {

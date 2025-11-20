@@ -30,8 +30,8 @@ router.get('/global', authenticateToken, async (req: AuthRequest, res) => {
       return successResponse(res, {
         leaderboard: [],
         pagination: {
-          limit: parseInt(req.query.limit as string) || 100,
-          offset: parseInt(req.query.offset as string) || 0,
+          limit: Number.parseInt(req.query.limit as string, 10) || 100,
+          offset: Number.parseInt(req.query.offset as string) || 0,
           total: 0
         }
       });
@@ -91,15 +91,15 @@ router.get('/global', authenticateToken, async (req: AuthRequest, res) => {
     `;
 
     const result = await executeQuery(query, {
-      limit: parseInt(limit as string),
-      offset: parseInt(offset as string)
+      limit: Number.parseInt(limit as string),
+      offset: Number.parseInt(offset as string)
     });
 
     return successResponse(res, {
       leaderboard: result.recordset,
       pagination: {
-        limit: parseInt(limit as string),
-        offset: parseInt(offset as string),
+        limit: Number.parseInt(limit as string),
+        offset: Number.parseInt(offset as string),
         total: result.recordset.length
       }
     });
@@ -159,7 +159,7 @@ router.get('/friends', authenticateToken, async (req: AuthRequest, res) => {
 
     const result = await executeQuery(query, { 
       userId,
-      limit: parseInt(limit as string)
+      limit: Number.parseInt(limit as string)
     });
 
     return successResponse(res, result.recordset || []);
@@ -210,7 +210,7 @@ router.get('/competitions', authenticateToken, async (req: AuthRequest, res) => 
         StartDate DESC
     `;
 
-    const result = await executeQuery(query, { limit: parseInt(limit as string) });
+    const result = await executeQuery(query, { limit: Number.parseInt(limit as string) });
 
     return successResponse(res, result.recordset);
   } catch (error) {
@@ -255,18 +255,18 @@ router.get('/competition/:competitionId', authenticateToken, async (req: AuthReq
     `;
 
     const result = await executeQuery(query, {
-      competitionId: parseInt(competitionId),
+      competitionId: Number.parseInt(competitionId),
       userId: req.userId!,
-      limit: parseInt(limit as string),
-      offset: parseInt(offset as string)
+      limit: Number.parseInt(limit as string),
+      offset: Number.parseInt(offset as string)
     });
 
     return successResponse(res, {
       leaderboard: result.recordset,
-      competitionId: parseInt(competitionId),
+      competitionId: Number.parseInt(competitionId),
       pagination: {
-        limit: parseInt(limit as string),
-        offset: parseInt(offset as string),
+        limit: Number.parseInt(limit as string),
+        offset: Number.parseInt(offset as string),
         total: result.recordset.length
       }
     });
@@ -293,7 +293,7 @@ router.post('/competition/:competitionId/join', authenticateToken, async (req: A
       AND CurrentParticipants < MaxParticipants
     `;
 
-    const competitionResult = await executeQuery(competitionQuery, { competitionId: parseInt(competitionId) });
+    const competitionResult = await executeQuery(competitionQuery, { competitionId: Number.parseInt(competitionId) });
 
     if (competitionResult.recordset.length === 0) {
       return errorResponse(res, 'Competition not available for joining', 400);
@@ -306,7 +306,7 @@ router.post('/competition/:competitionId/join', authenticateToken, async (req: A
     `;
 
     const participantResult = await executeQuery(participantQuery, {
-      competitionId: parseInt(competitionId),
+      competitionId: Number.parseInt(competitionId),
       userId
     });
 
@@ -316,7 +316,7 @@ router.post('/competition/:competitionId/join', authenticateToken, async (req: A
 
     // Join competition
     const joinResult = await executeProcedure('sp_JoinCompetition', {
-      CompetitionID: parseInt(competitionId),
+      CompetitionID: Number.parseInt(competitionId),
       UserID: userId
     });
 
@@ -366,7 +366,7 @@ router.post('/competition/:competitionId/join', authenticateToken, async (req: A
 router.get('/user/:userId', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const { userId } = req.params;
-    const userIdNum = parseInt(userId);
+    const userIdNum = Number.parseInt(userId);
     
     if (isNaN(userIdNum)) {
       return errorResponse(res, 'Invalid user ID', 400);
@@ -427,7 +427,7 @@ router.get('/user/:userId', authenticateToken, async (req: AuthRequest, res) => 
       WHERE UserID = @userId ${timeFilter}
     `;
 
-    const result = await executeQuery(query, { userId: parseInt(userId) });
+    const result = await executeQuery(query, { userId: Number.parseInt(userId) });
 
     if (result.recordset.length === 0) {
       return errorResponse(res, 'User not found', 404);
@@ -444,7 +444,7 @@ router.get('/user/:userId', authenticateToken, async (req: AuthRequest, res) => 
       ORDER BY ua.UnlockedAt DESC
     `;
 
-    const achievementsResult = await executeQuery(achievementsQuery, { userId: parseInt(userId) });
+    const achievementsResult = await executeQuery(achievementsQuery, { userId: Number.parseInt(userId) });
 
     return successResponse(res, {
       ...userStats,

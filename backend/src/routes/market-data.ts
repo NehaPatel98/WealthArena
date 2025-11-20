@@ -44,7 +44,7 @@ router.get('/symbols', authenticateToken, async (req: AuthRequest, res) => {
 
     if (limit) {
       query = `SELECT TOP (@limit) * FROM (${query}) as ranked`;
-      params.limit = parseInt(limit as string);
+      params.limit = Number.parseInt(limit as string);
     }
 
     const result = await executeQuery(query, params);
@@ -69,7 +69,7 @@ router.get('/history/:symbol', authenticateToken, async (req: AuthRequest, res) 
     // Calculate days from period
     let daysToFetch = 60; // default
     if (days) {
-      daysToFetch = parseInt(days as string);
+      daysToFetch = Number.parseInt(days as string);
     } else if (period === '1d') {
       daysToFetch = 1;
     } else if (period === '5d') {
@@ -305,7 +305,7 @@ router.get('/internal/history/:symbol', async (req, res) => {
   try {
     const { symbol } = req.params;
     const { days = 60 } = req.query;
-    const daysToFetch = parseInt(days as string);
+    const daysToFetch = Number.parseInt(days as string);
 
     // Get data from data pipeline service
     const dbData = await dataPipelineService.getMarketData(symbol, daysToFetch);
@@ -405,7 +405,7 @@ router.get('/trending', authenticateToken, async (req: AuthRequest, res) => {
       ORDER BY TotalVolume DESC, AvgPriceChange DESC
     `;
 
-    const result = await executeQuery(query, { limit: parseInt(limit as string) });
+    const result = await executeQuery(query, { limit: Number.parseInt(limit as string) });
 
     return successResponse(res, result.recordset);
   } catch (error) {
@@ -539,17 +539,17 @@ router.get('/screener', authenticateToken, async (req: AuthRequest, res) => {
 
     if (min_volume) {
       query += ` AND Volume >= @minVolume`;
-      params.minVolume = parseInt(min_volume as string);
+      params.minVolume = Number.parseInt(min_volume as string);
     }
 
     if (min_market_cap) {
       query += ` AND MarketCap >= @minMarketCap`;
-      params.minMarketCap = parseInt(min_market_cap as string);
+      params.minMarketCap = Number.parseInt(min_market_cap as string);
     }
 
     if (max_market_cap) {
       query += ` AND MarketCap <= @maxMarketCap`;
-      params.maxMarketCap = parseInt(max_market_cap as string);
+      params.maxMarketCap = Number.parseInt(max_market_cap as string);
     }
 
     if (min_rsi) {
@@ -587,7 +587,7 @@ router.get('/screener', authenticateToken, async (req: AuthRequest, res) => {
     }
 
     query = `SELECT TOP (@limit) * FROM (${query}) as screened`;
-    params.limit = parseInt(limit as string);
+    params.limit = Number.parseInt(limit as string);
 
     const result = await executeQuery(query, params);
 

@@ -16,7 +16,7 @@ const router = express.Router();
  */
 router.get('/top', authenticateToken, async (req, res) => {
   try {
-    const limit = parseInt(req.query.limit as string) || 10;
+    const limit = Number.parseInt(req.query.limit as string, 10) || 10;
     const assetType = req.query.assetType as string;
 
     let query = `
@@ -47,7 +47,7 @@ router.get('/top', authenticateToken, async (req, res) => {
  */
 router.get('/:signalId', authenticateToken, async (req, res) => {
   try {
-    const signalId = parseInt(req.params.signalId);
+    const signalId = Number.parseInt(req.params.signalId, 10);
 
     const signalQuery = `
       SELECT * FROM TradingSignals WHERE SignalID = @signalId
@@ -109,8 +109,8 @@ router.get('/symbol/:symbol', authenticateToken, async (req, res) => {
  */
 router.get('/historical', authenticateToken, async (req, res) => {
   try {
-    const limit = parseInt(req.query.limit as string) || 20;
-    const offset = parseInt(req.query.offset as string) || 0;
+    const limit = Number.parseInt(req.query.limit as string, 10) || 20;
+    const offset = Number.parseInt(req.query.offset as string, 10) || 0;
     const assetType = req.query.assetType as string;
     const outcome = req.query.outcome as string; // 'win' | 'loss' | 'pending' | 'all'
 

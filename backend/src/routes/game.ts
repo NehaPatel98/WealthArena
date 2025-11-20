@@ -356,7 +356,7 @@ router.get('/sessions', authenticateToken, async (req: AuthRequest, res) => {
 router.get('/history', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const userId = req.userId!;
-    const limit = parseInt(req.query.limit as string) || 20;
+    const limit = Number.parseInt(req.query.limit as string, 10) || 20;
 
     const query = `
       SELECT TOP (@limit)

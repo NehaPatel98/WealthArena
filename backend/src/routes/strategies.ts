@@ -82,16 +82,16 @@ router.get('/', authenticateToken, async (req: AuthRequest, res) => {
     query += ` ORDER BY s.CreatedAt DESC`;
 
     query = `SELECT * FROM (${query}) as strategies ORDER BY UserCount DESC, CreatedAt DESC OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY`;
-    params.offset = parseInt(offset as string);
-    params.limit = parseInt(limit as string);
+    params.offset = Number.Number.parseInt(offset as string, 10);
+    params.limit = Number.Number.parseInt(limit as string, 10);
 
     const result = await executeQuery(query, params);
 
     return successResponse(res, {
       strategies: result.recordset,
       pagination: {
-        limit: parseInt(limit as string),
-        offset: parseInt(offset as string),
+        limit: Number.parseInt(limit as string, 10),
+        offset: Number.parseInt(offset as string, 10),
         total: result.recordset.length
       }
     });
@@ -120,7 +120,7 @@ router.get('/:strategyId', authenticateToken, async (req: AuthRequest, res) => {
       WHERE s.StrategyID = @strategyId
     `;
 
-    const result = await executeQuery(query, { strategyId: parseInt(strategyId) });
+    const result = await executeQuery(query, { strategyId: Number.Number.parseInt(strategyId, 10) });
 
     if (result.recordset.length === 0) {
       return errorResponse(res, 'Strategy not found', 404);
@@ -135,7 +135,7 @@ router.get('/:strategyId', authenticateToken, async (req: AuthRequest, res) => {
     `;
 
     const userStrategyResult = await executeQuery(userStrategyQuery, {
-      strategyId: parseInt(strategyId),
+      strategyId: Number.Number.parseInt(strategyId, 10),
       userId: req.userId!
     });
 
@@ -214,7 +214,7 @@ router.put('/:strategyId', authenticateToken, async (req: AuthRequest, res) => {
       SELECT CreatedBy FROM Strategies WHERE StrategyID = @strategyId
     `;
 
-    const ownershipResult = await executeQuery(ownershipQuery, { strategyId: parseInt(strategyId) });
+    const ownershipResult = await executeQuery(ownershipQuery, { strategyId: Number.parseInt(strategyId, 10) });
 
     if (ownershipResult.recordset.length === 0) {
       return errorResponse(res, 'Strategy not found', 404);
@@ -226,7 +226,7 @@ router.put('/:strategyId', authenticateToken, async (req: AuthRequest, res) => {
     }
 
     const updateFields = [];
-    const params: any = { strategyId: parseInt(strategyId) };
+    const params: any = { strategyId: Number.Number.parseInt(strategyId, 10) };
 
     if (strategyName) {
       updateFields.push('StrategyName = @strategyName');
@@ -293,7 +293,7 @@ router.delete('/:strategyId', authenticateToken, async (req: AuthRequest, res) =
       SELECT CreatedBy FROM Strategies WHERE StrategyID = @strategyId
     `;
 
-    const ownershipResult = await executeQuery(ownershipQuery, { strategyId: parseInt(strategyId) });
+    const ownershipResult = await executeQuery(ownershipQuery, { strategyId: Number.parseInt(strategyId, 10) });
 
     if (ownershipResult.recordset.length === 0) {
       return errorResponse(res, 'Strategy not found', 404);
@@ -305,7 +305,7 @@ router.delete('/:strategyId', authenticateToken, async (req: AuthRequest, res) =
     }
 
     await executeQuery('DELETE FROM Strategies WHERE StrategyID = @strategyId', {
-      strategyId: parseInt(strategyId)
+      strategyId: Number.parseInt(strategyId, 10)
     });
 
     return successResponse(res, { message: 'Strategy deleted successfully' });
@@ -328,7 +328,7 @@ router.post('/:strategyId/follow', authenticateToken, async (req: AuthRequest, r
       SELECT IsPublic FROM Strategies WHERE StrategyID = @strategyId
     `;
 
-    const strategyResult = await executeQuery(strategyQuery, { strategyId: parseInt(strategyId) });
+    const strategyResult = await executeQuery(strategyQuery, { strategyId: Number.parseInt(strategyId, 10) });
 
     if (strategyResult.recordset.length === 0) {
       return errorResponse(res, 'Strategy not found', 404);
@@ -346,7 +346,7 @@ router.post('/:strategyId/follow', authenticateToken, async (req: AuthRequest, r
     `;
 
     const followResult = await executeQuery(followQuery, {
-      strategyId: parseInt(strategyId),
+      strategyId: Number.Number.parseInt(strategyId, 10),
       userId
     });
 
@@ -356,7 +356,7 @@ router.post('/:strategyId/follow', authenticateToken, async (req: AuthRequest, r
 
     await executeQuery(
       'INSERT INTO UserStrategies (StrategyID, UserID, FollowedAt) VALUES (@strategyId, @userId, GETUTCDATE())',
-      { strategyId: parseInt(strategyId), userId }
+      { strategyId: Number.parseInt(strategyId, 10), userId }
     );
 
     return successResponse(res, { message: 'Strategy followed successfully' });
@@ -376,7 +376,7 @@ router.delete('/:strategyId/follow', authenticateToken, async (req: AuthRequest,
 
     await executeQuery(
       'DELETE FROM UserStrategies WHERE StrategyID = @strategyId AND UserID = @userId',
-      { strategyId: parseInt(strategyId), userId }
+      { strategyId: Number.parseInt(strategyId, 10), userId }
     );
 
     return successResponse(res, { message: 'Strategy unfollowed successfully' });
@@ -406,7 +406,7 @@ router.post('/:strategyId/backtest', authenticateToken, async (req: AuthRequest,
     // This would typically call the RL system's backtesting API
     // For now, return a placeholder response
     const backtestResult = {
-      strategyId: parseInt(strategyId),
+      strategyId: Number.Number.parseInt(strategyId, 10),
       startDate,
       endDate,
       initialCapital,
@@ -451,16 +451,16 @@ router.get('/user/:userId', authenticateToken, async (req: AuthRequest, res) => 
     `;
 
     const result = await executeQuery(query, {
-      userId: parseInt(userId),
-      limit: parseInt(limit as string),
-      offset: parseInt(offset as string)
+      userId: Number.parseInt(userId, 10),
+      limit: Number.parseInt(limit as string, 10),
+      offset: Number.parseInt(offset as string, 10)
     });
 
     return successResponse(res, {
       strategies: result.recordset,
       pagination: {
-        limit: parseInt(limit as string),
-        offset: parseInt(offset as string),
+        limit: Number.parseInt(limit as string, 10),
+        offset: Number.parseInt(offset as string, 10),
         total: result.recordset.length
       }
     });
