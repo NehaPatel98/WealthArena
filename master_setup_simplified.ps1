@@ -734,15 +734,19 @@ JWT_SECRET=local-dev-secret-change-in-production
         if (-not $deepseekApiKey -or $deepseekApiKey -eq "your_deepseek_api_key_here") {
             Write-Host ""
             Write-ColorOutput "DeepSeek API Key Required (Primary)" $Yellow
-            Write-ColorOutput "Get your API key from: https://platform.deepseek.com" $White
-            Write-ColorOutput "Model: DeepSeek V3.1 Terminus" $Cyan
+            Write-ColorOutput "Get your API key from: https://platform.deepseek.com or https://openrouter.ai" $White
+            Write-ColorOutput "Model: DeepSeek V3.1 Terminus (via OpenRouter)" $Cyan
             Write-ColorOutput "Note: Groq will be used as fallback if configured" $Cyan
-            $deepseekApiKey = Read-Host "Enter your DeepSeek API Key (or press Enter to use provided key)"
+            $deepseekApiKey = Read-Host "Enter your DeepSeek/OpenRouter API Key (REQUIRED)"
             
             if (-not $deepseekApiKey -or $deepseekApiKey.Trim() -eq "") {
-                # Use the provided API key
-                $deepseekApiKey = "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"
-                Write-StatusMessage "Using provided DeepSeek API key" "SUCCESS"
+                Write-StatusMessage "DeepSeek API key is required. Please provide a valid key." "ERROR"
+                throw "DEEPSEEK_API_KEY is required. Please provide a valid DeepSeek/OpenRouter API key."
+            }
+            
+            # Validate key format (should start with sk-)
+            if (-not $deepseekApiKey.StartsWith("sk-")) {
+                Write-StatusMessage "Warning: API key format may be invalid (expected 'sk-' prefix)" "WARNING"
             }
         }
         

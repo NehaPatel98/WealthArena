@@ -118,9 +118,23 @@ celerybeat.pid
 **/.env
 *.env
 **/*.env
+.env.local
+**/.env.local
+*.env.local
+**/*.env.local
+.env.*.local
 # keep example templates
 !*.env.example
 !**/*.env.example
+# API keys and secrets (additional patterns)
+*secret*
+*key*
+*password*
+*credential*
+*api_key*
+*API_KEY*
+*apikey*
+*APIKEY*
 
 # Editors / IDE
 # PyCharm
