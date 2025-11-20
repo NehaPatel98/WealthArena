@@ -562,13 +562,39 @@ function Invoke-Phase2-Dependencies {
     Write-StatusMessage "Installing chatbot dependencies (simplified - no RAG)..." "INFO"
     try {
         Set-Location (Join-Path $script:ScriptDir "chatbot")
-        pip install -r requirements.txt
-        if ($LASTEXITCODE -eq 0) {
+        
+        # Upgrade pip first for better wheel support
+        Write-StatusMessage "Upgrading pip for better package compatibility..." "INFO"
+        python -m pip install --upgrade pip --quiet 2>&1 | Out-Null
+        
+        # Try installing with pre-built wheels first (avoids Rust compilation)
+        Write-StatusMessage "Installing dependencies with pre-built wheels..." "INFO"
+        $pipOutput = pip install --only-binary :all: -r requirements.txt 2>&1
+        $exitCode = $LASTEXITCODE
+        
+        if ($exitCode -ne 0) {
+            Write-StatusMessage "Pre-built wheels not available, trying standard install..." "WARNING"
+            # Fallback: Try standard install (may require Rust for pydantic-core)
+            # But first, try to install pydantic-core from a pre-built wheel if available
+            Write-StatusMessage "Attempting to install pydantic-core separately..." "INFO"
+            pip install --only-binary pydantic-core pydantic-core 2>&1 | Out-Null
+            
+            # Now try installing requirements again
+            $pipOutput = pip install -r requirements.txt 2>&1
+            $exitCode = $LASTEXITCODE
+        }
+        
+        if ($exitCode -eq 0) {
             Write-StatusMessage "Chatbot dependencies installed" "SUCCESS"
             $results.Chatbot = $true
         }
         else {
             Write-StatusMessage "Chatbot dependency installation failed" "ERROR"
+            Write-ColorOutput "  Error: Some packages require Rust to compile (pydantic-core)" $Yellow
+            Write-ColorOutput "  Solution options:" $Yellow
+            Write-ColorOutput "    1. Install Rust: https://rustup.rs/" $White
+            Write-ColorOutput "    2. Use Python 3.11 or 3.12 (better pre-built wheel support)" $White
+            Write-ColorOutput "    3. Continue anyway - chatbot may work with partial dependencies" $White
             $results.Chatbot = $false
         }
     }
