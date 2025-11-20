@@ -558,8 +558,8 @@ function Invoke-Phase2-Dependencies {
         Set-Location $script:ScriptDir
     }
     
-    # Chatbot (simplified - no RAG dependencies)
-    Write-StatusMessage "Installing chatbot dependencies (simplified - no RAG)..." "INFO"
+    # Chatbot (simplified - no RAG dependencies, DeepSeek API only)
+    Write-StatusMessage "Installing chatbot dependencies (simplified - DeepSeek API only)..." "INFO"
     try {
         Set-Location (Join-Path $script:ScriptDir "chatbot")
         
@@ -567,48 +567,31 @@ function Invoke-Phase2-Dependencies {
         Write-StatusMessage "Upgrading pip for better package compatibility..." "INFO"
         python -m pip install --upgrade pip --quiet 2>&1 | Out-Null
         
-        # Install key packages first that might have version conflicts with pre-built wheels
-        Write-StatusMessage "Installing core packages first..." "INFO"
-        pip install "numpy>=2.1.0" "pandas>=2.0.0" --quiet 2>&1 | Out-Null
-        
-        # Try installing with pre-built wheels, but allow source builds for packages that need it
-        Write-StatusMessage "Installing remaining dependencies..." "INFO"
-        $pipOutput = pip install -r requirements.txt --prefer-binary 2>&1
-        $exitCode = $LASTEXITCODE
-        
-        if ($exitCode -ne 0) {
-            Write-StatusMessage "Standard install failed, trying with relaxed constraints..." "WARNING"
-            # Try installing with updated numpy/pandas versions that have pre-built wheels
-            Write-StatusMessage "Installing compatible package versions..." "INFO"
-            pip install "numpy>=2.1.0" "pandas>=2.2.0" "pydantic>=2.5.0" --quiet 2>&1 | Out-Null
-            
-            # Create a temporary requirements file with relaxed constraints
-            $tempRequirements = Join-Path (Join-Path $script:ScriptDir "chatbot") "requirements_temp.txt"
-            $originalRequirements = Get-Content (Join-Path (Join-Path $script:ScriptDir "chatbot") "requirements.txt") -Raw
-            $modifiedRequirements = $originalRequirements -replace 'numpy>=1\.24\.0,<2\.0\.0', 'numpy>=2.1.0' -replace 'pandas>=2\.0\.0,<2\.3\.0', 'pandas>=2.2.0'
-            $modifiedRequirements | Set-Content -Path $tempRequirements
-            
-            # Try installing with modified requirements
-            $pipOutput = pip install -r $tempRequirements --prefer-binary 2>&1
-            $exitCode = $LASTEXITCODE
-            
-            # Clean up temp file
-            if (Test-Path $tempRequirements) {
-                Remove-Item $tempRequirements -Force
-            }
+        # Use simplified requirements file (no heavy dependencies like chromadb, pandas, numpy)
+        $requirementsFile = "requirements-simplified.txt"
+        if (-not (Test-Path $requirementsFile)) {
+            Write-StatusMessage "Simplified requirements not found, using full requirements..." "WARNING"
+            $requirementsFile = "requirements.txt"
+        }
+        else {
+            Write-StatusMessage "Using simplified requirements (DeepSeek API only - no RAG)" "INFO"
         }
         
+        # Install dependencies - simplified version should have no compilation issues
+        Write-StatusMessage "Installing dependencies from $requirementsFile..." "INFO"
+        $pipOutput = pip install -r $requirementsFile 2>&1
+        $exitCode = $LASTEXITCODE
+        
         if ($exitCode -eq 0) {
-            Write-StatusMessage "Chatbot dependencies installed" "SUCCESS"
+            Write-StatusMessage "Chatbot dependencies installed successfully" "SUCCESS"
+            Write-ColorOutput "  Using simplified setup: FastAPI + httpx + DeepSeek API" $Cyan
+            Write-ColorOutput "  No RAG/vector DB dependencies required" $Cyan
             $results.Chatbot = $true
         }
         else {
             Write-StatusMessage "Chatbot dependency installation failed" "ERROR"
-            Write-ColorOutput "  Error: Package version conflicts or missing pre-built wheels" $Yellow
-            Write-ColorOutput "  Solution options:" $Yellow
-            Write-ColorOutput "    1. Install Rust: https://rustup.rs/ (for pydantic-core compilation)" $White
-            Write-ColorOutput "    2. Use Python 3.11 or 3.12 (better pre-built wheel support)" $White
-            Write-ColorOutput "    3. Continue anyway - chatbot may work with partial dependencies" $White
+            Write-ColorOutput "  Error output:" $Yellow
+            Write-ColorOutput "  $pipOutput" $Red
             $results.Chatbot = $false
         }
     }
