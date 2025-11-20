@@ -8,6 +8,7 @@ import uuid
 import math
 import time
 import random
+import secrets
 import re
 from datetime import datetime, date, timedelta
 from pathlib import Path
@@ -262,8 +263,8 @@ async def start_game(request: GameStartRequest):
     
     # Validate episode exists or handle random selection
     if request.episode_id == "random":
-        # Select a random episode uniformly
-        episode = random.choice(EPISODES)
+        # Select a random episode using cryptographically secure random
+        episode = EPISODES[secrets.randbelow(len(EPISODES))]
     else:
         episode = next((ep for ep in EPISODES if ep["id"] == request.episode_id), None)
         if not episode:

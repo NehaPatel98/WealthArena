@@ -1,6 +1,10 @@
 # Multi-stage build for smaller image size
 # Stage 1: Build TypeScript to JavaScript
+# Use node:20-alpine and create non-root user for security
 FROM node:20-alpine AS builder
+
+# Create non-root user for security
+RUN addgroup -g 1001 -S nodejs && adduser -S wealtharena -u 1001 -G nodejs
 
 WORKDIR /app
 
@@ -27,8 +31,11 @@ COPY package*.json ./
 # Install only production dependencies
 RUN npm ci --only=production
 
-# Copy compiled code from builder stage
-COPY --from=builder /app/dist ./dist
+# Copy compiled code from builder stage with proper ownership
+COPY --from=builder --chown=wealtharena:nodejs /app/dist ./dist
+
+# Switch to non-root user for security
+USER wealtharena
 
 # Set environment variables
 ENV NODE_ENV=production

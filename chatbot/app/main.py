@@ -93,10 +93,11 @@ if _cors_origins_env:
     logging.info(f"CORS origins from environment: {cors_origins}")
 else:
     # Default to local development origins
+    # Note: HTTP is used for local development only. Production should use HTTPS.
     cors_origins = [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
-        "http://10.0.2.2:8000",  # Android emulator
+        "http://10.0.2.2:8000",  # Android emulator - required for development
         "http://127.0.0.1:8000",
         "http://localhost:8000",
         "http://localhost:8080",
@@ -107,15 +108,31 @@ else:
         "http://localhost:19006",  # Expo
     ]
     logging.info(f"CORS origins using defaults for local dev: {cors_origins}")
+    if not os.getenv("NODE_ENV") == "development":
+        logging.warning("Using HTTP origins in non-development environment. Consider using HTTPS in production.")
 
-# Add CORS middleware for mobile
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Add CORS middleware for mobile - restrict in production
+# In production, CORS should be more restrictive
+is_production = os.getenv("NODE_ENV") == "production" or os.getenv("ENVIRONMENT") == "production"
+
+if is_production:
+    # Production CORS - more restrictive
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_origins,  # Should be specific domains in production
+        allow_credentials=False,  # Disable credentials in production for security
+        allow_methods=["GET", "POST"],  # Only allow necessary methods
+        allow_headers=["Content-Type", "Authorization"],  # Only allow necessary headers
+    )
+else:
+    # Development CORS - more permissive for local development
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 # Add metrics middleware
 app.add_middleware(MetricsMiddleware)
