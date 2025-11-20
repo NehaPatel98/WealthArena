@@ -1,0 +1,67 @@
+azure:
+  resource_group: rg-wealtharena-northcentralus
+  location: northcentralus
+  suffix: jg1ve2
+  subscription_id: ""
+phase_control:
+  skip_frontend_test: false
+  skip_data_download: false
+  skip_data_processing: false
+  skip_data_export: false
+  skip_rl_training: false
+  skip_deployment: false
+  skip_apk_build: false
+data_pipeline:
+  start_date: 2022-01-01
+  end_date: 2025-01-01
+  asset_classes:
+  - asx
+  - crypto
+  - forex
+  - commodities
+  - etfs
+  batch_size: 80
+  process_only_training_symbols: false
+mvp_mode:
+  enabled: true
+  asx_stock_limit: 50  # Limit ASX stocks to top 50 for faster setup (used by master_setup_simplified.ps1)
+  asx_training_limit: 50
+  process_only_training_symbols: true
+  skip_low_volume_stocks: true
+  min_market_cap_millions: 500
+  min_daily_volume: 100000
+  include_all_crypto: true
+  include_all_forex: true
+  include_all_commodities: true
+  include_all_etfs: true
+  etf_limit: 20  # Limit ETFs to top 20
+rl_training:
+  config_file: config/fastest_training_config.yaml
+  quick_training_mode: false
+  max_iterations: 2000
+  target_reward: 500
+  num_workers: 4
+  training_speed: fastest
+deployment:
+  backend_app_name: wealtharena-backend
+  chatbot_app_name: wealtharena-chatbot
+  rl_service_app_name: wealtharena-rl
+  storage_account: stwealtharenadev
+  sql_server: sql-wealtharena-jg1ve2
+testing:
+  health_check_timeout: 30
+  health_check_retries: 3
+  run_integration_tests: true
+apk_build:
+  build_profile: production
+  auto_submit: false
+  download_apk: true
+logging:
+  log_level: INFO
+  log_directory: automation_logs
+  keep_logs_days: 30
+notifications:
+  email_notifications: false
+  email_recipients: []
+  slack_webhook: ""
+

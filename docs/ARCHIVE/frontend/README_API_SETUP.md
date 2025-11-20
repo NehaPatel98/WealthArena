@@ -12,7 +12,7 @@ WealthArena/
 ```
 
 ### 🔐 Your API Key
-- **Alpha Vantage API Key**: `5EM9TXSMLJDD83Z8`
+- **Alpha Vantage API Key**: `YOUR_API_KEY_HERE` (get from https://www.alphavantage.co/support/#api-key)
 
 ### ✅ Setup Complete
 The API key is already configured in `config/apiKeys.ts`
@@ -72,7 +72,7 @@ SYMBOL_SEARCH
 
 ### 📊 Example API Call
 ```bash
-https://www.alphavantage.co/query?function=TIME_SERIES_INTRADAY&symbol=AAPL&interval=5min&apikey=5EM9TXSMLJDD83Z8
+https://www.alphavantage.co/query?function=TIME_SERIES_INTRADAY&symbol=AAPL&interval=5min&apikey=YOUR_API_KEY_HERE
 ```
 
 ## ⚠️ Important

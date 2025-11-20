@@ -1,0 +1,38 @@
+{
+    "StartTime":  {
+                      "value":  "\/Date(1762438975432)\/",
+                      "DisplayHint":  2,
+                      "DateTime":  "Thursday, November 6, 2025 9:22:55 AM"
+                  },
+    "CompletedPhases":  [
+                            7,
+                            8,
+                            9,
+                            10,
+                            11
+                        ],
+    "ServiceURLs":  {
+
+                    },
+    "CurrentPhase":  11,
+    "Artifacts":  {
+                      "DataPipelineFunctions":  {
+                                                    "ResourceGroup":  "rg-wealtharena-northcentralus",
+                                                    "Status":  "Warning",
+                                                    "Timestamp":  {
+                                                                      "value":  "\/Date(1762439169658)\/",
+                                                                      "DisplayHint":  2,
+                                                                      "DateTime":  "Thursday, November 6, 2025 9:26:09 AM"
+                                                                  },
+                                                    "FunctionAppName":  "wealtharena-data-pipeline"
+                                                }
+                  },
+    "FailedPhases":  [
+
+                     ],
+    "SaveTime":  {
+                     "value":  "\/Date(1762439238607)\/",
+                     "DisplayHint":  2,
+                     "DateTime":  "Thursday, November 6, 2025 9:27:18 AM"
+                 }
+}
