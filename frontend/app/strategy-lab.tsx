@@ -1,19 +1,31 @@
 import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  TextInput,
-  Alert,
-  ActivityIndicator,
+import { 
+  View, 
+  StyleSheet, 
+  ScrollView, 
+  Pressable, 
+  Modal, 
+  Alert, 
+  KeyboardAvoidingView, 
+  Platform, 
+  TouchableWithoutFeedback, 
+  Keyboard 
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter, Stack } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
-import { apiClient, TradingSignal } from '../services/apiService';
-import FloatingChatbot from '../components/FloatingChatbot';
+import { 
+  useTheme, 
+  Text, 
+  Card, 
+  Button, 
+  TextInput, 
+  Icon, 
+  Badge,
+  FAB,
+  tokens 
+} from '@/src/design-system';
+import { apiService } from '@/services/apiService';
 
 interface Strategy {
   id: string;
@@ -26,8 +38,17 @@ interface Strategy {
   is_active: boolean;
 }
 
-const StrategyLab = () => {
-  const navigation = useNavigation();
+interface TradingSignal {
+  id: string;
+  symbol: string;
+  signal_type: 'BUY' | 'SELL';
+  confidence_score: number;
+  entry_price: number;
+}
+
+export default function StrategyLabScreen() {
+  const router = useRouter();
+  const { theme } = useTheme();
   const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [signals, setSignals] = useState<TradingSignal[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,12 +69,19 @@ const StrategyLab = () => {
       setLoading(true);
       
       // Load trading signals
-      const signalsResponse = await apiClient.getTopSignals();
-      if (signalsResponse.success) {
-        setSignals(signalsResponse.data?.signals || []);
+      try {
+        const signalsResponse = await apiService.getTopSignals();
+        if (signalsResponse.success && signalsResponse.data) {
+          const signalsData = Array.isArray(signalsResponse.data) 
+            ? signalsResponse.data 
+            : signalsResponse.data.signals || [];
+          setSignals(signalsData.slice(0, 5));
+        }
+      } catch (error) {
+        console.warn('Failed to load signals:', error);
       }
 
-      // Load user strategies (mock data for now)
+      // Load user strategies (mock data for now - will be replaced with backend API)
       const mockStrategies: Strategy[] = [
         {
           id: '1',
@@ -129,10 +157,10 @@ const StrategyLab = () => {
 
   const getRiskColor = (riskLevel: string) => {
     switch (riskLevel) {
-      case 'low': return '#4CAF50';
-      case 'medium': return '#FF9800';
-      case 'high': return '#F44336';
-      default: return '#757575';
+      case 'low': return theme.success;
+      case 'medium': return theme.warning;
+      case 'high': return theme.danger;
+      default: return theme.muted;
     }
   };
 
@@ -147,438 +175,439 @@ const StrategyLab = () => {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#6366F1" />
-        <Text style={styles.loadingText}>Loading Strategy Lab...</Text>
-      </View>
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top']}>
+        <Stack.Screen options={{ headerShown: false }} />
+        <View style={styles.loadingContainer}>
+          <Icon name="lab" size={48} color={theme.primary} />
+          <Text variant="h3" weight="semibold" style={{ marginTop: tokens.spacing.md }}>
+            Loading Strategy Lab...
+          </Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <LinearGradient
-        colors={['#1E1B4B', '#312E81']}
-        style={styles.header}
-      >
-        <View style={styles.headerContent}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
-            <Ionicons name="arrow-back" size={24} color="white" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Strategy Lab</Text>
-          <TouchableOpacity
-            style={styles.createButton}
-            onPress={() => setShowCreateForm(true)}
-          >
-            <Ionicons name="add" size={24} color="white" />
-          </TouchableOpacity>
-        </View>
-      </LinearGradient>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top']}>
+      <Stack.Screen options={{ headerShown: false }} />
+      
+      {/* Custom Header */}
+      <View style={[styles.header, { backgroundColor: theme.bg, borderBottomColor: theme.border }]}>
+        <Pressable onPress={() => router.back()} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={24} color={theme.text} />
+        </Pressable>
+        <Text variant="h3" weight="semibold" style={styles.headerTitle}>Strategy Lab</Text>
+        <Pressable onPress={() => setShowCreateForm(true)} style={styles.addButton}>
+          <Ionicons name="add" size={24} color={theme.primary} />
+        </Pressable>
+      </View>
 
-      <ScrollView style={styles.content}>
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
         {/* AI Signals Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>AI Trading Signals</Text>
-          <Text style={styles.sectionSubtitle}>Latest signals from our RL models</Text>
+        <Card style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <Icon name="signal" size={24} color={theme.primary} />
+            <Text variant="h3" weight="semibold">AI Trading Signals</Text>
+          </View>
+          <Text variant="small" muted style={styles.sectionSubtitle}>
+            Latest signals from our RL models
+          </Text>
           
           {signals.length > 0 ? (
             <View style={styles.signalsContainer}>
-              {signals.slice(0, 3).map((signal) => (
-                <View key={signal.id} style={styles.signalCard}>
+              {signals.map((signal) => (
+                <Card key={signal.id} style={styles.signalCard}>
                   <View style={styles.signalHeader}>
-                    <Text style={styles.signalSymbol}>{signal.symbol}</Text>
-                    <View style={[
-                      styles.signalType,
-                      { backgroundColor: signal.signal_type === 'BUY' ? '#4CAF50' : '#F44336' }
-                    ]}>
-                      <Text style={styles.signalTypeText}>{signal.signal_type}</Text>
+                    <View style={styles.signalLeft}>
+                      <View style={[styles.symbolCircle, { backgroundColor: theme.primary + '20' }]}>
+                        <Text variant="body" weight="bold">{signal.symbol.slice(0, 1)}</Text>
+                      </View>
+                      <View>
+                        <Text variant="body" weight="semibold">{signal.symbol}</Text>
+                        <Text variant="small" muted>
+                          Entry: ${signal.entry_price.toFixed(2)}
+                        </Text>
+                      </View>
                     </View>
+                    <Badge 
+                      variant={signal.signal_type === 'BUY' ? 'success' : 'danger'} 
+                      size="small"
+                    >
+                      {signal.signal_type}
+                    </Badge>
                   </View>
-                  <Text style={styles.signalConfidence}>
-                    Confidence: {(signal.confidence_score * 100).toFixed(1)}%
-                  </Text>
-                  <Text style={styles.signalPrice}>
-                    Entry: ${signal.entry_price.toFixed(2)}
-                  </Text>
-                </View>
+                  <View style={styles.signalFooter}>
+                    <Text variant="small" muted>
+                      Confidence: {(signal.confidence_score * 100).toFixed(1)}%
+                    </Text>
+                  </View>
+                </Card>
               ))}
             </View>
           ) : (
-            <Text style={styles.noDataText}>No signals available</Text>
+            <View style={styles.emptyContainer}>
+              <Icon name="signal" size={48} color={theme.muted} />
+              <Text variant="body" muted center>No signals available</Text>
+            </View>
           )}
-        </View>
+        </Card>
 
         {/* User Strategies Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Your Strategies</Text>
-          <Text style={styles.sectionSubtitle}>Create and manage your trading strategies</Text>
+        <Card style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <Icon name="portfolio" size={24} color={theme.accent} />
+            <Text variant="h3" weight="semibold">Your Strategies</Text>
+          </View>
+          <Text variant="small" muted style={styles.sectionSubtitle}>
+            Create and manage your trading strategies
+          </Text>
           
           {strategies.map((strategy) => (
-            <View key={strategy.id} style={styles.strategyCard}>
+            <Card key={strategy.id} style={styles.strategyCard}>
               <View style={styles.strategyHeader}>
-                <Text style={styles.strategyName}>{strategy.name}</Text>
-                <TouchableOpacity
+                <View style={styles.strategyLeft}>
+                  <Text variant="h4" weight="semibold">{strategy.name}</Text>
+                  <Text variant="small" muted>{strategy.description}</Text>
+                </View>
+                <Pressable
+                  onPress={() => toggleStrategy(strategy.id)}
                   style={[
                     styles.toggleButton,
-                    { backgroundColor: strategy.is_active ? '#4CAF50' : '#757575' }
+                    { 
+                      backgroundColor: strategy.is_active ? theme.success : theme.border 
+                    }
                   ]}
-                  onPress={() => toggleStrategy(strategy.id)}
                 >
-                  <Text style={styles.toggleButtonText}>
+                  <Text 
+                    variant="small" 
+                    weight="semibold"
+                    color={strategy.is_active ? theme.bg : theme.text}
+                  >
                     {strategy.is_active ? 'Active' : 'Inactive'}
                   </Text>
-                </TouchableOpacity>
+                </Pressable>
               </View>
-              
-              <Text style={styles.strategyDescription}>{strategy.description}</Text>
               
               <View style={styles.strategyMetrics}>
                 <View style={styles.metric}>
-                  <Text style={styles.metricLabel}>Risk Level</Text>
-                  <Text style={[styles.metricValue, { color: getRiskColor(strategy.risk_level) }]}>
+                  <Text variant="xs" muted>Risk Level</Text>
+                  <Text variant="small" weight="semibold" color={getRiskColor(strategy.risk_level)}>
                     {getRiskLabel(strategy.risk_level)}
                   </Text>
                 </View>
                 <View style={styles.metric}>
-                  <Text style={styles.metricLabel}>Expected Return</Text>
-                  <Text style={styles.metricValue}>
+                  <Text variant="xs" muted>Expected Return</Text>
+                  <Text variant="small" weight="semibold">
                     {(strategy.expected_return * 100).toFixed(1)}%
                   </Text>
                 </View>
                 <View style={styles.metric}>
-                  <Text style={styles.metricLabel}>Sharpe Ratio</Text>
-                  <Text style={styles.metricValue}>
+                  <Text variant="xs" muted>Sharpe Ratio</Text>
+                  <Text variant="small" weight="semibold">
                     {strategy.sharpe_ratio.toFixed(2)}
                   </Text>
                 </View>
               </View>
-            </View>
+            </Card>
           ))}
-        </View>
+        </Card>
+
+        {/* Bottom Spacing */}
+        <View style={{ height: tokens.spacing.xl }} />
       </ScrollView>
 
-      {/* Create Strategy Modal */}
-      {showCreateForm && (
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Create New Strategy</Text>
-            
-            <TextInput
-              style={styles.input}
-              placeholder="Strategy Name"
-              value={newStrategy.name}
-              onChangeText={(text) => setNewStrategy({ ...newStrategy, name: text })}
-            />
-            
-            <TextInput
-              style={[styles.input, styles.textArea]}
-              placeholder="Description"
-              value={newStrategy.description}
-              onChangeText={(text) => setNewStrategy({ ...newStrategy, description: text })}
-              multiline
-              numberOfLines={3}
-            />
-            
-            <View style={styles.riskSelector}>
-              <Text style={styles.riskLabel}>Risk Level:</Text>
-              <View style={styles.riskOptions}>
-                {['low', 'medium', 'high'].map((level) => (
-                  <TouchableOpacity
-                    key={level}
-                    style={[
-                      styles.riskOption,
-                      newStrategy.risk_level === level && styles.riskOptionSelected
-                    ]}
-                    onPress={() => setNewStrategy({ ...newStrategy, risk_level: level as any })}
-                  >
-                    <Text style={[
-                      styles.riskOptionText,
-                      newStrategy.risk_level === level && styles.riskOptionTextSelected
-                    ]}>
-                      {level.charAt(0).toUpperCase() + level.slice(1)}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-            
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={styles.cancelButton}
-                onPress={() => setShowCreateForm(false)}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.createButton}
-                onPress={createStrategy}
-              >
-                <Text style={styles.createButtonText}>Create</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      )}
+      <FAB onPress={() => router.push('/ai-chat')} />
 
-      <FloatingChatbot
-        context={{
-          current_page: 'strategy_lab',
-          available_signals: signals.length,
-          user_strategies: strategies.length,
+      {/* Create Strategy Modal */}
+      <Modal
+        visible={showCreateForm}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => {
+          Keyboard.dismiss();
+          setShowCreateForm(false);
         }}
-      />
-    </View>
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.modalOverlay}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+          >
+            <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
+              <View style={styles.modalContainer}>
+                <Card style={styles.modalContent}>
+                  <ScrollView 
+                    style={styles.modalScrollView}
+                    contentContainerStyle={styles.modalScrollContent}
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
+                  >
+                    <View style={styles.modalHeader}>
+                      <Text variant="h3" weight="semibold">Create New Strategy</Text>
+                      <Pressable 
+                        onPress={() => {
+                          Keyboard.dismiss();
+                          setShowCreateForm(false);
+                        }}
+                      >
+                        <Ionicons name="close" size={24} color={theme.text} />
+                      </Pressable>
+                    </View>
+                    
+                    <TextInput
+                      label="Strategy Name"
+                      value={newStrategy.name}
+                      onChangeText={(text) => setNewStrategy({ ...newStrategy, name: text })}
+                      placeholder="Enter strategy name"
+                      autoFocus={false}
+                      returnKeyType="next"
+                      onSubmitEditing={() => {
+                        // Focus next input if needed
+                      }}
+                    />
+                    
+                    <TextInput
+                      label="Description"
+                      value={newStrategy.description}
+                      onChangeText={(text) => setNewStrategy({ ...newStrategy, description: text })}
+                      placeholder="Describe your strategy"
+                      multiline
+                      numberOfLines={3}
+                      returnKeyType="done"
+                      blurOnSubmit={true}
+                    />
+                    
+                    <View style={styles.riskSelector}>
+                      <Text variant="body" weight="semibold" style={styles.riskLabel}>Risk Level:</Text>
+                      <View style={styles.riskOptions}>
+                        {(['low', 'medium', 'high'] as const).map((level) => (
+                          <Pressable
+                            key={level}
+                            onPress={() => {
+                              Keyboard.dismiss();
+                              setNewStrategy({ ...newStrategy, risk_level: level });
+                            }}
+                            style={[
+                              styles.riskOption,
+                              { borderColor: theme.border },
+                              newStrategy.risk_level === level && { 
+                                backgroundColor: theme.primary,
+                                borderColor: theme.primary 
+                              }
+                            ]}
+                          >
+                            <Text 
+                              variant="small" 
+                              weight="semibold"
+                              color={newStrategy.risk_level === level ? theme.bg : theme.text}
+                            >
+                              {level.charAt(0).toUpperCase() + level.slice(1)}
+                            </Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    </View>
+                    
+                    <View style={styles.modalButtons}>
+                      <Button
+                        variant="ghost"
+                        size="large"
+                        onPress={() => {
+                          Keyboard.dismiss();
+                          setShowCreateForm(false);
+                        }}
+                        style={styles.modalButton}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        variant="primary"
+                        size="large"
+                        onPress={() => {
+                          Keyboard.dismiss();
+                          createStrategy();
+                        }}
+                        style={styles.modalButton}
+                      >
+                        Create
+                      </Button>
+                    </View>
+                  </ScrollView>
+                </Card>
+              </View>
+            </TouchableWithoutFeedback>
+          </KeyboardAvoidingView>
+        </TouchableWithoutFeedback>
+      </Modal>
+    </SafeAreaView>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0F0F23',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.sm,
+    borderBottomWidth: 1,
+    height: 56,
+  },
+  backButton: {
+    padding: tokens.spacing.xs,
+    marginLeft: -tokens.spacing.xs,
+  },
+  headerTitle: {
+    flex: 1,
+    textAlign: 'center',
+    marginHorizontal: tokens.spacing.md,
+  },
+  addButton: {
+    padding: tokens.spacing.xs,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  content: {
+    padding: tokens.spacing.md,
+    gap: tokens.spacing.md,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#0F0F23',
   },
-  loadingText: {
-    color: '#A1A1AA',
-    marginTop: 16,
-    fontSize: 16,
+  sectionCard: {
+    gap: tokens.spacing.md,
   },
-  header: {
-    paddingTop: 50,
-    paddingBottom: 20,
-    paddingHorizontal: 20,
-  },
-  headerContent: {
+  sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  backButton: {
-    padding: 8,
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: 'white',
-  },
-  createButton: {
-    padding: 8,
-  },
-  content: {
-    flex: 1,
-    padding: 20,
-  },
-  section: {
-    marginBottom: 30,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: 'white',
-    marginBottom: 8,
+    gap: tokens.spacing.sm,
   },
   sectionSubtitle: {
-    fontSize: 14,
-    color: '#A1A1AA',
-    marginBottom: 16,
+    marginTop: tokens.spacing.xs,
   },
   signalsContainer: {
-    gap: 12,
+    gap: tokens.spacing.sm,
+    marginTop: tokens.spacing.sm,
   },
   signalCard: {
-    backgroundColor: '#1A1A2E',
-    borderRadius: 12,
-    padding: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: '#6366F1',
+    gap: tokens.spacing.xs,
   },
   signalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
   },
-  signalSymbol: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: 'white',
+  signalLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.sm,
+    flex: 1,
   },
-  signalType: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 16,
+  symbolCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  signalTypeText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: 'bold',
+  signalFooter: {
+    marginTop: tokens.spacing.xs,
   },
-  signalConfidence: {
-    fontSize: 14,
-    color: '#A1A1AA',
-    marginBottom: 4,
-  },
-  signalPrice: {
-    fontSize: 14,
-    color: '#4CAF50',
-    fontWeight: '600',
+  emptyContainer: {
+    alignItems: 'center',
+    paddingVertical: tokens.spacing.xl,
+    gap: tokens.spacing.sm,
   },
   strategyCard: {
-    backgroundColor: '#1A1A2E',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+    gap: tokens.spacing.md,
+    marginBottom: tokens.spacing.sm,
   },
   strategyHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
+    alignItems: 'flex-start',
   },
-  strategyName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: 'white',
+  strategyLeft: {
+    flex: 1,
+    gap: tokens.spacing.xs,
   },
   toggleButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  toggleButtonText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  strategyDescription: {
-    fontSize: 14,
-    color: '#A1A1AA',
-    marginBottom: 12,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.xs,
+    borderRadius: tokens.radius.md,
   },
   strategyMetrics: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'space-around',
+    paddingTop: tokens.spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
   },
   metric: {
     alignItems: 'center',
-  },
-  metricLabel: {
-    fontSize: 12,
-    color: '#A1A1AA',
-    marginBottom: 4,
-  },
-  metricValue: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: 'white',
-  },
-  noDataText: {
-    color: '#A1A1AA',
-    textAlign: 'center',
-    fontSize: 16,
-    marginTop: 20,
+    gap: tokens.spacing.xs,
   },
   modalOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+  },
+  modalContainer: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    padding: tokens.spacing.md,
   },
   modalContent: {
-    backgroundColor: '#1A1A2E',
-    borderRadius: 16,
-    padding: 24,
     width: '100%',
     maxWidth: 400,
+    maxHeight: '90%',
   },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: 'white',
-    marginBottom: 20,
-    textAlign: 'center',
+  modalScrollView: {
+    flex: 1,
   },
-  input: {
-    backgroundColor: '#2A2A3E',
-    borderRadius: 8,
-    padding: 12,
-    color: 'white',
-    fontSize: 16,
-    marginBottom: 16,
+  modalScrollContent: {
+    gap: tokens.spacing.md,
+    paddingBottom: tokens.spacing.md,
   },
-  textArea: {
-    height: 80,
-    textAlignVertical: 'top',
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   riskSelector: {
-    marginBottom: 20,
+    gap: tokens.spacing.sm,
   },
   riskLabel: {
-    fontSize: 16,
-    color: 'white',
-    marginBottom: 12,
+    marginBottom: tokens.spacing.xs,
   },
   riskOptions: {
     flexDirection: 'row',
-    gap: 8,
+    gap: tokens.spacing.sm,
   },
   riskOption: {
     flex: 1,
-    padding: 12,
-    borderRadius: 8,
-    backgroundColor: '#2A2A3E',
+    padding: tokens.spacing.md,
+    borderRadius: tokens.radius.md,
+    borderWidth: 1,
     alignItems: 'center',
-  },
-  riskOptionSelected: {
-    backgroundColor: '#6366F1',
-  },
-  riskOptionText: {
-    color: '#A1A1AA',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  riskOptionTextSelected: {
-    color: 'white',
   },
   modalButtons: {
     flexDirection: 'row',
-    gap: 12,
+    gap: tokens.spacing.sm,
+    marginTop: tokens.spacing.sm,
   },
-  cancelButton: {
+  modalButton: {
     flex: 1,
-    padding: 12,
-    borderRadius: 8,
-    backgroundColor: '#2A2A3E',
-    alignItems: 'center',
-  },
-  cancelButtonText: {
-    color: '#A1A1AA',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  createButton: {
-    flex: 1,
-    padding: 12,
-    borderRadius: 8,
-    backgroundColor: '#6366F1',
-    alignItems: 'center',
-  },
-  createButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
   },
 });
-
-export default StrategyLab;

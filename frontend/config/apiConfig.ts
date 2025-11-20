@@ -1,4 +1,7 @@
 ﻿// WealthArena API Configuration (env-driven for local, Docker, Azure, and GCP)
+// Uses dynamic network resolution to support multiple devices and networks automatically
+
+import { getBackendURLSync, resolveBackendURL, getNetworkInfo } from '../utils/networkConfig';
 
 const isDevelopment = process.env.NODE_ENV === 'development' || (global as any).__DEV__;
 const isDocker = process.env.EXPO_PUBLIC_DOCKER === 'true';
@@ -7,21 +10,34 @@ const isAzure = DEPLOYMENT_ENV === 'azure';
 const isGCP = DEPLOYMENT_ENV === 'gcp';
 const isLocal = DEPLOYMENT_ENV === 'local';
 
-// URL Resolution Logic: Environment variable > Deployment env default > localhost fallback
+// Dynamic URL Resolution Logic:
+// 1. Environment variable (highest priority)
+// 2. Platform-specific detection (iOS Simulator, Android Emulator, Physical Device)
+// 3. Deployment environment defaults (Azure, GCP)
+// 4. Fallback to localhost
+// 
+// For physical devices: Uses cached IP from AsyncStorage or extracts from env vars
+// For simulators: Uses platform-specific localhost (localhost for iOS, 10.0.2.2 for Android)
+// For web: Uses localhost
+// Note: resolveBackendURL is already imported above, no need to import again
+// For synchronous access, use getBackendURLSync() from networkConfig
 const BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 
-  (isAzure ? 'https://wealtharena-backend.azurewebsites.net' :
-   isGCP ? 'https://wealtharena-backend.appspot.com' :
-   (isDevelopment && !isDocker ? 'http://localhost:3000' : 'http://backend:3000'));
+  (isDocker ? 'http://backend:3000' :
+   (isAzure ? 'https://wealtharena-backend.azurewebsites.net' :
+    isGCP ? 'https://wealtharena-backend.appspot.com' :
+    getBackendURLSync(3000)));
 
 const CHATBOT_BASE_URL = process.env.EXPO_PUBLIC_CHATBOT_URL || 
-  (isAzure ? 'https://wealtharena-chatbot.azurewebsites.net' :
-   isGCP ? 'https://wealtharena-chatbot.appspot.com' :
-   (isDevelopment && !isDocker ? 'http://localhost:5001' : 'http://chatbot:5001'));
+  (isDocker ? 'http://chatbot:5001' :
+   (isAzure ? 'https://wealtharena-chatbot.azurewebsites.net' :
+    isGCP ? 'https://wealtharena-chatbot.appspot.com' :
+    getBackendURLSync(8000))); // Chatbot typically runs on 8000, but config allows 5001
 
 const RL_SERVICE_URL = process.env.EXPO_PUBLIC_RL_SERVICE_URL || 
-  (isAzure ? 'https://wealtharena-rl.azurewebsites.net' :
-   isGCP ? 'https://wealtharena-rl.appspot.com' :
-   (isDevelopment && !isDocker ? 'http://localhost:5002' : 'http://rl-service:5002'));
+  (isDocker ? 'http://rl-service:5002' :
+   (isAzure ? 'https://wealtharena-rl.azurewebsites.net' :
+    isGCP ? 'https://wealtharena-rl.appspot.com' :
+    getBackendURLSync(5002)));
 
 export const API_CONFIG = {
   BACKEND_BASE_URL,
@@ -91,6 +107,15 @@ export const API_CONFIG = {
   ENVIRONMENT: isDevelopment ? 'development' : 'production',
   VERSION: '1.0.0',
   LAST_UPDATED: new Date().toISOString(),
+  // Network info for debugging
+  getNetworkInfo,
+  // Async URL resolution (useful for runtime updates on physical devices)
+  resolveBackendURL,
+  resolveChatbotURL: () => resolveBackendURL(8000),
+  resolveRLServiceURL: () => resolveBackendURL(5002),
 };
 
 export default API_CONFIG;
+
+// Re-export network utilities for convenience
+export { resolveBackendURL, setBackendURL, getCachedBackendURL, clearCachedURLs, getNetworkInfo } from '../utils/networkConfig';

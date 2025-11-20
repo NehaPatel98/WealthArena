@@ -76,7 +76,8 @@ router.post('/create-session', authenticateToken, async (req: AuthRequest, res) 
     
     // Store database id in session data for future lookups
     if (insertResult.recordset.length > 0) {
-      (sessionData as any).dbId = insertResult.recordset[0].id;
+      const insertRecord = insertResult.recordset[0] as { id: number };
+      (sessionData as any).dbId = insertRecord.id;
     }
 
     return successResponse(res, {

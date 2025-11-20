@@ -17,13 +17,23 @@ const router = express.Router();
  */
 router.post('/signup', async (req, res) => {
   try {
-    const { email, password, username, full_name } = req.body;
+    const { email, password, username, firstName, lastName, displayName, full_name } = req.body;
 
-    console.log('📝 Signup request:', { email, username, full_name });
+    console.log('📝 Signup request:', { email, username, firstName, lastName, full_name });
 
     // Validation
     if (!email || !password || !username) {
       return badRequestResponse(res, 'Email, password, and username are required');
+    }
+
+    // Parse full_name if provided (for frontend compatibility)
+    let parsedFirstName = firstName;
+    let parsedLastName = lastName;
+    
+    if (!parsedFirstName && full_name) {
+      const nameParts = full_name.trim().split(' ');
+      parsedFirstName = nameParts[0] || '';
+      parsedLastName = nameParts.slice(1).join(' ') || '';
     }
 
     // Check if user exists
@@ -41,7 +51,9 @@ router.post('/signup', async (req, res) => {
       Email: email,
       PasswordHash: passwordHash,
       Username: username,
-      DisplayName: full_name || username,
+      FirstName: parsedFirstName,
+      LastName: parsedLastName,
+      DisplayName: displayName || full_name || username,
     });
 
     const userId = result.UserID;
@@ -59,7 +71,9 @@ router.post('/signup', async (req, res) => {
           user_id: userId,
           email,
           username,
-          full_name: full_name || username,
+          firstName: parsedFirstName,
+          lastName: parsedLastName,
+          full_name: full_name || `${parsedFirstName} ${parsedLastName}`.trim() || username,
           tier_level: 'Bronze',
           xp_points: 0,
           total_balance: 10000, // Starting balance
@@ -119,7 +133,11 @@ router.post('/login', async (req, res) => {
         user_id: user.UserID,
         email: user.Email,
         username: user.Username,
-        full_name: user.DisplayName,
+        firstName: user.FirstName,
+        lastName: user.LastName,
+        full_name: user.FirstName && user.LastName 
+          ? `${user.FirstName} ${user.LastName}`.trim()
+          : user.DisplayName || user.Username,
         tier_level: user.Tier,
         xp_points: user.TotalXP,
         total_balance: 10000,

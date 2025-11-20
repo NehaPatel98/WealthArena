@@ -3,7 +3,7 @@
  * Beginner-friendly game configuration with multiple instrument selection
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, Pressable, Alert, Dimensions } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -18,93 +18,55 @@ import {
   FAB, 
   tokens 
 } from '@/src/design-system';
-import { createGameSession } from '@/services/apiService';
+import { createGameSession, apiService } from '@/services/apiService';
+import { cachedAssetService, TradingAsset } from '@/services/cachedAssetService';
+import { marketDataService } from '@/services/marketDataService';
 
 const { width } = Dimensions.get('window');
 
-// Available trading symbols with beginner-friendly descriptions
-const TRADING_SYMBOLS = [
-  { 
-    symbol: 'SPY', 
-    name: 'S&P 500 ETF', 
-    description: 'Tracks the top 500 US companies. Great for beginners!',
-    category: 'ETF',
-    risk: 'Low',
-    icon: 'trending-up'
-  },
-  { 
-    symbol: 'QQQ', 
-    name: 'Tech ETF', 
-    description: 'Focuses on technology companies like Apple and Microsoft',
-    category: 'ETF',
-    risk: 'Medium',
-    icon: 'laptop'
-  },
-  { 
-    symbol: 'AAPL', 
-    name: 'Apple Inc.', 
-    description: 'The iPhone maker and one of the largest tech companies',
-    category: 'Tech',
-    risk: 'Medium',
-    icon: 'phone-portrait'
-  },
-  { 
-    symbol: 'MSFT', 
-    name: 'Microsoft', 
-    description: 'Windows, Xbox, and cloud computing leader',
-    category: 'Tech',
-    risk: 'Medium',
-    icon: 'desktop'
-  },
-  { 
-    symbol: 'GOOGL', 
-    name: 'Google/Alphabet', 
-    description: 'Search engine and advertising giant',
-    category: 'Tech',
-    risk: 'Medium',
-    icon: 'search'
-  },
-  { 
-    symbol: 'AMZN', 
-    name: 'Amazon', 
-    description: 'E-commerce and cloud computing powerhouse',
-    category: 'Retail',
-    risk: 'Medium',
-    icon: 'cart'
-  },
-  { 
-    symbol: 'TSLA', 
-    name: 'Tesla', 
-    description: 'Electric vehicles and clean energy',
-    category: 'Auto',
-    risk: 'High',
-    icon: 'car'
-  },
-  { 
-    symbol: 'NVDA', 
-    name: 'NVIDIA', 
-    description: 'Graphics cards and AI chip leader',
-    category: 'Tech',
-    risk: 'High',
-    icon: 'hardware-chip'
-  },
-  { 
-    symbol: 'META', 
-    name: 'Meta (Facebook)', 
-    description: 'Social media and virtual reality',
-    category: 'Tech',
-    risk: 'Medium',
-    icon: 'people'
-  },
-  { 
-    symbol: 'NFLX', 
-    name: 'Netflix', 
-    description: 'Streaming entertainment service',
-    category: 'Media',
-    risk: 'High',
-    icon: 'film'
-  },
-];
+// Icon mapping for asset types
+const getAssetIcon = (type: string, symbol: string): string => {
+  const iconMap: Record<string, string> = {
+    'SPY': 'trending-up',
+    'QQQ': 'laptop',
+    'AAPL': 'phone-portrait',
+    'MSFT': 'desktop',
+    'GOOGL': 'search',
+    'AMZN': 'cart',
+    'TSLA': 'car',
+    'NVDA': 'hardware-chip',
+    'META': 'people',
+    'NFLX': 'film',
+  };
+  
+  if (iconMap[symbol]) return iconMap[symbol];
+  
+  switch (type) {
+    case 'etf': return 'trending-up';
+    case 'crypto': return 'logo-bitcoin';
+    case 'forex': return 'swap-horizontal';
+    case 'commodity': return 'cube';
+    default: return 'bar-chart';
+  }
+};
+
+// Risk level mapping
+const getRiskLevel = (type: string, symbol: string): 'Low' | 'Medium' | 'High' => {
+  // ETFs are generally lower risk
+  if (type === 'etf') {
+    if (['SPY', 'VTI', 'DIA'].includes(symbol)) return 'Low';
+    return 'Medium';
+  }
+  
+  // Crypto and commodities are higher risk
+  if (type === 'crypto' || type === 'commodity') return 'High';
+  
+  // Forex is medium risk
+  if (type === 'forex') return 'Medium';
+  
+  // Stocks vary, default to medium
+  return 'Medium';
+};
 
 const GAME_MODES = [
   {
@@ -183,6 +145,108 @@ export default function GameSetupScreen() {
   const [showPortfolioInput, setShowPortfolioInput] = useState<boolean>(false);
   const [isCreatingSession, setIsCreatingSession] = useState<boolean>(false);
   const [sessionError, setSessionError] = useState<string | null>(null);
+  const [availableAssets, setAvailableAssets] = useState<TradingAsset[]>([]);
+  const [isLoadingAssets, setIsLoadingAssets] = useState(true);
+
+  // Load assets from database on mount
+  useEffect(() => {
+    const loadAssets = async () => {
+      try {
+        setIsLoadingAssets(true);
+        
+        // First try to get available symbols from backend database
+        try {
+          console.log('Loading assets from backend...');
+          const availableSymbols = await marketDataService.getAvailableSymbols();
+          
+          console.log(`Backend returned ${availableSymbols?.length || 0} symbols`);
+          
+          if (availableSymbols && availableSymbols.length > 0) {
+            // Detect asset type from symbol patterns
+            const detectAssetType = (symbol: string): TradingAsset['type'] => {
+              // Forex: ends with =X
+              if (symbol.endsWith('=X')) return 'forex';
+              // Crypto: contains -USD or -USDT
+              if (symbol.includes('-USD') || symbol.includes('-USDT')) return 'crypto';
+              // Commodities: ends with =F
+              if (symbol.endsWith('=F')) return 'commodity';
+              // ETFs: common ETF symbols
+              if (['SPY', 'QQQ', 'VTI', 'IWM', 'DIA', 'ARKK'].includes(symbol)) return 'etf';
+              // Australian stocks: ends with .AX
+              if (symbol.endsWith('.AX')) return 'stock';
+              // Default to stock
+              return 'stock';
+            };
+            
+            // Map symbols to TradingAsset format with proper type detection
+            const assetsFromDb: TradingAsset[] = availableSymbols.map((symbol, index) => {
+              const assetType = detectAssetType(symbol);
+              return {
+                id: `asset-${index}`,
+                symbol,
+                name: symbol, // Will be enhanced with full name if available
+                type: assetType,
+                exchange: symbol.endsWith('.AX') ? 'ASX' : 'US',
+                description: `Trading asset: ${symbol}`,
+              };
+            });
+            
+            console.log(`Mapped ${assetsFromDb.length} assets, validating data availability...`);
+            
+            // Skip validation check - if backend returned symbols, they have data
+            // The validation was too slow and causing issues
+            console.log(`Using all ${assetsFromDb.length} symbols from backend (skipping slow validation)`);
+            
+            if (assetsFromDb.length > 0) {
+              setAvailableAssets(assetsFromDb);
+              // Default to first asset (don't look for SPY since we have Australian stocks)
+              setSelectedSymbols([assetsFromDb[0].symbol]);
+              setIsLoadingAssets(false);
+              console.log(`✓ Loaded ${assetsFromDb.length} real assets from backend`);
+              return;
+            } else {
+              console.warn('No assets found, but symbols were returned from backend');
+            }
+          } else {
+            console.warn('Backend returned empty or no symbols');
+          }
+        } catch (dbError) {
+          console.error('Failed to load assets from database:', dbError);
+          // Don't fall back to cached service - show error instead
+          Alert.alert(
+            'Data Loading Error',
+            `Failed to load trading assets from backend: ${dbError instanceof Error ? dbError.message : 'Unknown error'}\n\nPlease ensure the backend is running and has processed market data.`,
+            [{ text: 'OK' }]
+          );
+          setIsLoadingAssets(false);
+          return;
+        }
+        
+        // If we get here, no real assets were found
+        console.error('No real assets available - backend may not have data loaded');
+        Alert.alert(
+          'No Data Available',
+          'No market data is available. Please ensure:\n\n1. Backend is running\n2. Market data has been processed (run: node backend/scripts/processMarketData.js --mvp)\n3. Backend has loaded the data',
+          [{ text: 'OK' }]
+        );
+        setAvailableAssets([]);
+      } catch (error) {
+        console.error('Error loading assets:', error);
+        setAvailableAssets([]);
+        Alert.alert(
+          'No Data Available',
+          'No market data is available. Please ensure the database has been initialized with CSV data.',
+          [
+            { text: 'OK', style: 'default' }
+          ]
+        );
+      } finally {
+        setIsLoadingAssets(false);
+      }
+    };
+
+    loadAssets();
+  }, []);
 
   const toggleSymbol = (symbol: string) => {
     if (selectedSymbols.includes(symbol)) {
@@ -201,6 +265,27 @@ export default function GameSetupScreen() {
     setSessionError(null);
     
     try {
+      // Validate that selected symbols have data
+      for (const symbol of selectedSymbols) {
+        const hasData = await marketDataService.checkDataAvailability(symbol);
+        if (!hasData) {
+          const availableSymbols = await marketDataService.getAvailableSymbols();
+          Alert.alert(
+            'Data Unavailable',
+            `No historical data is available for ${symbol}. ` +
+            `Please select a different symbol. ` +
+            (availableSymbols.length > 0 
+              ? `Available symbols: ${availableSymbols.slice(0, 10).join(', ')}`
+              : 'No symbols have data available. Please initialize the database first.'),
+            [
+              { text: 'OK', style: 'default' }
+            ]
+          );
+          setIsCreatingSession(false);
+          return;
+        }
+      }
+      
       // Create game session via API - pass game setup context for backend persistence
       // This ensures session metadata (symbols, difficulty, starting cash) is stored
       // for proper resume functionality and analytics
@@ -227,8 +312,24 @@ export default function GameSetupScreen() {
       });
     } catch (error: any) {
       console.error('Failed to create game session:', error);
-      setSessionError(error.message || 'Failed to start game. Please try again.');
-      Alert.alert('Error', error.message || 'Failed to start game. Please try again.');
+      const errorMessage = error.message || 'Failed to start game. Please try again.';
+      setSessionError(errorMessage);
+      
+      if (errorMessage.includes('Game session not found') || errorMessage.includes('not found')) {
+        Alert.alert(
+          'Session Error',
+          'Failed to create game session. Please ensure:\n' +
+          '1. Backend is running\n' +
+          '2. Database is connected\n' +
+          '3. Selected symbols have data available',
+          [
+            { text: 'Go Back', onPress: () => router.back(), style: 'cancel' },
+            { text: 'Try Again', onPress: () => handleStartGame(), style: 'default' }
+          ]
+        );
+      } else {
+        Alert.alert('Error', errorMessage);
+      }
     } finally {
       setIsCreatingSession(false);
     }
@@ -468,61 +569,79 @@ export default function GameSetupScreen() {
             </Card>
           )}
 
-          <View style={styles.symbolGrid}>
-            {TRADING_SYMBOLS.map((symbol) => {
-              const isSelected = selectedSymbols.includes(symbol.symbol);
-              const riskColor = getRiskColor(symbol.risk);
-              
-              return (
-                <Pressable 
-                  key={symbol.symbol}
-                  onPress={() => toggleSymbol(symbol.symbol)}
-                  style={{ width: (width - tokens.spacing.md * 3) / 2 }}
-                >
-                  <Card
-                    style={StyleSheet.flatten([
-                      styles.symbolCard,
-                      isSelected && {
-                        borderColor: theme.primary,
-                        borderWidth: 2,
-                        backgroundColor: theme.primary + '10'
-                      }
-                    ])}
-                    elevation="low"
+          {isLoadingAssets ? (
+            <Card style={styles.symbolCard}>
+              <Text variant="body" muted center>Loading assets from database...</Text>
+            </Card>
+          ) : availableAssets.length === 0 ? (
+            <Card style={styles.symbolCard}>
+              <Text variant="body" muted center>No assets available</Text>
+              <Text variant="small" muted center style={{ marginTop: tokens.spacing.xs }}>
+                Please ensure your database has market data
+              </Text>
+            </Card>
+          ) : (
+            <View style={styles.symbolGrid}>
+              {availableAssets.map((asset) => {
+                const isSelected = selectedSymbols.includes(asset.symbol);
+                const risk = getRiskLevel(asset.type, asset.symbol);
+                const riskColor = getRiskColor(risk);
+                const icon = getAssetIcon(asset.type, asset.symbol);
+                
+                return (
+                  <Pressable 
+                    key={asset.id}
+                    onPress={() => toggleSymbol(asset.symbol)}
+                    style={{ width: (width - tokens.spacing.md * 3) / 2 }}
                   >
-                    {isSelected && (
-                      <View style={styles.selectedBadge}>
-                        <Ionicons name="checkmark-circle" size={20} color={theme.primary} />
+                    <Card
+                      style={StyleSheet.flatten([
+                        styles.symbolCard,
+                        isSelected && {
+                          borderColor: theme.primary,
+                          borderWidth: 2,
+                          backgroundColor: theme.primary + '10'
+                        }
+                      ])}
+                      elevation="low"
+                    >
+                      {isSelected && (
+                        <View style={styles.selectedBadge}>
+                          <Ionicons name="checkmark-circle" size={20} color={theme.primary} />
+                        </View>
+                      )}
+                      
+                      <View style={[styles.symbolIcon, { backgroundColor: theme.primary + '15' }]}>
+                        <Ionicons name={icon as any} size={24} color={theme.primary} />
                       </View>
-                    )}
-                    
-                    <View style={[styles.symbolIcon, { backgroundColor: theme.primary + '15' }]}>
-                      <Ionicons name={symbol.icon as any} size={24} color={theme.primary} />
-                    </View>
-                    
-                    <Text variant="body" weight="bold" center>{symbol.symbol}</Text>
-                    <Text variant="xs" muted center numberOfLines={1}>{symbol.name}</Text>
-                    
-                    <View style={styles.symbolMeta}>
-                      <Badge 
-                        variant="secondary" 
-                        size="small"
-                        style={{ backgroundColor: riskColor + '20' }}
-                      >
-                        <Text variant="xs" color={riskColor}>{symbol.risk}</Text>
-                      </Badge>
-                    </View>
-                    
-                    {gameMode === 'beginner' && (
-                      <Text variant="xs" muted center numberOfLines={2} style={{ marginTop: 4 }}>
-                        {symbol.description}
-                      </Text>
-                    )}
-                  </Card>
-                </Pressable>
-              );
-            })}
-          </View>
+                      
+                      <Text variant="body" weight="bold" center>{asset.symbol}</Text>
+                      <Text variant="xs" muted center numberOfLines={1}>{asset.name}</Text>
+                      
+                      <View style={styles.symbolMeta}>
+                        <Badge 
+                          variant="secondary" 
+                          size="small"
+                          style={{ backgroundColor: riskColor + '20' }}
+                        >
+                          <Text variant="xs" color={riskColor}>{risk}</Text>
+                        </Badge>
+                        <Badge variant="secondary" size="small">
+                          <Text variant="xs">{asset.type.toUpperCase()}</Text>
+                        </Badge>
+                      </View>
+                      
+                      {gameMode === 'beginner' && asset.description && (
+                        <Text variant="xs" muted center numberOfLines={2} style={{ marginTop: 4 }}>
+                          {asset.description}
+                        </Text>
+                      )}
+                    </Card>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
         </View>
 
         {/* Summary Card */}

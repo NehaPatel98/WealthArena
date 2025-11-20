@@ -38,14 +38,32 @@ export const authenticateToken = (
       });
     }
     const decoded = jwt.verify(token, secret) as {
-      userId: number;
-      email: string;
+      userId?: number;
+      user_id?: number; // Support alternative field name
+      email?: string;
     };
 
-    req.userId = decoded.userId;
+    // Extract userId - support both userId and user_id field names
+    const userId = decoded.userId || decoded.user_id;
+    
+    if (!userId || typeof userId !== 'number') {
+      console.error('JWT token missing or invalid userId:', {
+        decoded,
+        hasUserId: !!decoded.userId,
+        hasUser_id: !!decoded.user_id,
+        userIdType: typeof userId
+      });
+      return res.status(403).json({
+        success: false,
+        message: 'Invalid token: missing user ID',
+      });
+    }
+
+    req.userId = userId;
     req.userEmail = decoded.email;
     next();
   } catch (error) {
+    console.error('JWT verification error:', error);
     return res.status(403).json({
       success: false,
       message: 'Invalid or expired token',

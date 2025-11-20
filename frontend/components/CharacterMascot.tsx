@@ -77,7 +77,11 @@ export default function CharacterMascot({
 
   return (
     <Animated.View style={[styles.container, { width: size, height: size }, style, animated && animatedStyle]}>
-      <Text style={[styles.emoji, { fontSize: size * 0.6 }]}>
+      <Text 
+        style={[styles.emoji, { fontSize: size * 0.7 }]}
+        allowFontScaling={true}
+        adjustsFontSizeToFit={false}
+      >
         {CHARACTER_EMOJIS[character]}
       </Text>
     </Animated.View>
@@ -88,9 +92,12 @@ const styles = StyleSheet.create({
   container: {
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'visible', // Allow emoji to render properly
   },
   emoji: {
     textAlign: 'center',
-    lineHeight: 1,
+    textAlignVertical: 'center',
+    lineHeight: undefined, // Let React Native handle line height for emojis
+    includeFontPadding: false, // Remove extra padding on Android
   },
 });

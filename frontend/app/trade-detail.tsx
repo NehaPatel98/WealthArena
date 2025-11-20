@@ -43,7 +43,12 @@ export default function TradeDetailScreen() {
     const fetchMarketData = async () => {
       try {
         setIsLoading(true);
-        const symbolToFetch = (symbol as string) || 'AAPL';
+        const symbolToFetch = (symbol as string);
+        
+        if (!symbolToFetch) {
+          setIsLoading(false);
+          return;
+        }
         
         // Update signal with current symbol
         setCurrentSignal({
@@ -52,25 +57,57 @@ export default function TradeDetailScreen() {
           name: getSymbolName(symbolToFetch)
         });
         
-        // Fetch daily data
-        const data = await alphaVantageService.getDailyData(symbolToFetch, 'compact');
-        setCandleData(data.slice(-30)); // Last 30 days
+        // Try Alpha Vantage first
+        try {
+          const data = await alphaVantageService.getDailyData(symbolToFetch, 'compact');
+          if (data && data.length > 0) {
+            setCandleData(data.slice(-30)); // Last 30 days
+            setIsLoading(false);
+            return;
+          }
+        } catch (avError) {
+          console.warn('Alpha Vantage failed, trying chatbot API...');
+        }
+        
+        // Fallback to chatbot market API (uses yfinance)
+        try {
+          const chatbotUrl = process.env.EXPO_PUBLIC_CHATBOT_URL || 'http://localhost:8000';
+          const response = await fetch(
+            `${chatbotUrl}/v1/market/ohlc?symbol=${symbolToFetch}&period=1mo&interval=1d`
+          );
+          
+          if (response.ok) {
+            const ohlcData = await response.json();
+            if (ohlcData.candles && ohlcData.candles.length > 0) {
+              const data = ohlcData.candles.map((candle: any) => ({
+                time: new Date(candle.t * 1000).toISOString().split('T')[0],
+                open: candle.o,
+                high: candle.h,
+                low: candle.l,
+                close: candle.c,
+              }));
+              setCandleData(data.slice(-30));
+              setIsLoading(false);
+              return;
+            }
+          }
+        } catch (chatbotError) {
+          console.warn('Chatbot API also failed:', chatbotError);
+        }
+        
+        // If all APIs fail, show empty state instead of mock data
+        setCandleData([]);
       } catch (error) {
         console.error('Failed to fetch market data:', error);
-        // Fallback to mock data
-        setCandleData([
-          { time: '2024-01-01', open: 173.50, high: 175.20, low: 173.00, close: 174.80 },
-          { time: '2024-01-02', open: 174.80, high: 176.50, low: 174.20, close: 175.90 },
-          { time: '2024-01-03', open: 175.90, high: 177.00, low: 175.50, close: 176.30 },
-          { time: '2024-01-04', open: 176.30, high: 176.80, low: 174.90, close: 175.20 },
-          { time: '2024-01-05', open: 175.20, high: 176.40, low: 174.80, close: 176.00 },
-        ]);
+        setCandleData([]);
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchMarketData();
+    if (symbol) {
+      fetchMarketData();
+    }
   }, [symbol]);
 
   // Helper function to get symbol name

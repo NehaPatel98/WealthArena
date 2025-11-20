@@ -2,6 +2,7 @@ import React from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Colors from '@/constants/colors';
+import { useTheme } from '@/src/design-system';
 
 interface GlassCardProps {
   children: React.ReactNode;
@@ -18,8 +19,9 @@ export default function GlassCard({
   style,
   variant = 'blue',
 }: GlassCardProps) {
+  const { theme } = useTheme();
   
-  // Map variants to colors from mockup
+  // Map variants to colors from mockup, but use theme colors when appropriate
   const getBorderColor = () => {
     if (glowColor) return glowColor;
     switch (variant) {
@@ -29,7 +31,7 @@ export default function GlassCard({
       case 'gold': return Colors.cardBorderGold;
       case 'pink': return Colors.cardBorderPink;
       case 'blue':
-      default: return Colors.cardBorderBlue;
+      default: return theme.primary || Colors.cardBorderBlue; // Use theme primary instead of hardcoded blue
     }
   };
 

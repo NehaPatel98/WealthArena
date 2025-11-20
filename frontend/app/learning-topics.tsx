@@ -7,13 +7,15 @@ import { useTheme, Text, Card, Button, Icon, Badge, ProgressRing, FAB, tokens } 
 import { apiService } from '@/services/apiService';
 import { useGamification } from '@/contexts/GamificationContext';
 
+// Fallback topics - only used when both APIs fail
+// All progress values set to 0 as these should only be used as absolute fallback
 const TOPICS = [
   { id: '1', title: 'Start Here', icon: 'trophy', completed: false, lessons: 5, progress: 0 },
-  { id: '2', title: 'Investing Basics', icon: 'market', completed: false, lessons: 8, progress: 25 },
+  { id: '2', title: 'Investing Basics', icon: 'market', completed: false, lessons: 8, progress: 0 },
   { id: '3', title: 'Investing Strategies', icon: 'lab', completed: false, lessons: 12, progress: 0 },
-  { id: '4', title: 'Portfolio Management', icon: 'portfolio', completed: false, lessons: 10, progress: 40 },
+  { id: '4', title: 'Portfolio Management', icon: 'portfolio', completed: false, lessons: 10, progress: 0 },
   { id: '5', title: 'Risk Analysis', icon: 'shield', completed: false, lessons: 7, progress: 0 },
-  { id: '6', title: 'Technical Analysis', icon: 'signal', completed: false, lessons: 15, progress: 60 },
+  { id: '6', title: 'Technical Analysis', icon: 'signal', completed: false, lessons: 15, progress: 0 },
   { id: '7', title: 'Market Psychology', icon: 'agent', completed: false, lessons: 6, progress: 0 },
 ];
 
@@ -75,56 +77,96 @@ export default function LearningTopicsScreen() {
       try {
         setIsLoading(true);
         
-        // Load knowledge topics from chatbot
-        const topicsData = await apiService.getKnowledgeTopics();
-        
-        // Map chatbot response to UI format
-        const mappedTopics = topicsData.map((topic: any) => ({
-          id: topic.id,
-          title: topic.title,
-          icon: getCategoryIcon(topic.category),
-          completed: false, // Will be updated from backend if available
-          lessons: getDifficultyLessons(topic.difficulty),
-          progress: 0 // Will be updated from backend if available
-        }));
-        
-        setTopics(mappedTopics);
-        
-        // Load overall progress from backend
+        // Try backend learning API first (primary source)
         try {
-          const progressData = await apiService.getUserLearningProgress();
-          setLearningProgress(progressData);
+          const response = await apiService.getLearningTopics();
+          console.log('Backend learning API response:', response);
+          console.log('Backend learning API response structure:', {
+            success: response?.success,
+            hasData: !!response?.data,
+            isArray: Array.isArray(response?.data),
+            dataLength: Array.isArray(response?.data) ? response.data.length : 0,
+            fullResponse: response,
+          });
           
-          // Merge progress into topics state
-          if (progressData && progressData.topicsProgress) {
-            const progressMap = new Map(
-              (progressData.topicsProgress || []).map((p: any) => [p.topicId || p.topic_id, p])
-            );
+          if (response && response.success && response.data && Array.isArray(response.data) && response.data.length > 0) {
+            // Map backend response to UI format
+            const mappedTopics = response.data.map((topic: any) => ({
+              id: topic.TopicID?.toString() || topic.topicId || `topic_${Date.now()}_${Math.random()}`,
+              title: topic.Title || topic.title || 'Untitled Topic',
+              icon: getCategoryIcon(topic.category || topic.Difficulty || 'Fundamentals'),
+              completed: topic.IsCompleted || topic.isCompleted || false,
+              lessons: topic.EstimatedDuration || getDifficultyLessons(topic.Difficulty || topic.difficulty || 'beginner'),
+              progress: topic.Progress || topic.progress || 0,
+              description: topic.Description || topic.description,
+              difficulty: topic.Difficulty || topic.difficulty || 'beginner',
+              xpReward: topic.XPReward || topic.xpReward || 0,
+              coinReward: topic.CoinReward || topic.coinReward || 0,
+            }));
             
-            const mappedTopicsWithProgress = mappedTopics.map(topic => {
-              const progress = progressMap.get(topic.id);
-              if (progress) {
-                return {
-                  ...topic,
-                  progress: progress.progressPercent || progress.progress_percent || 0,
-                  completed: progress.completed || progress.isCompleted || false,
-                };
-              }
-              return topic;
-            });
-            
-            setTopics(mappedTopicsWithProgress);
-          } else {
+            console.log('Mapped topics from backend:', mappedTopics);
             setTopics(mappedTopics);
+            
+            // Load overall progress
+            try {
+              const progressData = await apiService.getUserLearningProgress();
+              setLearningProgress(progressData);
+            } catch (progressError) {
+              console.log('Learning progress not available yet');
+            }
+            
+            setIsLoading(false);
+            return; // Success, exit early
+          } else {
+            console.log('Backend returned empty or invalid data, trying chatbot...');
           }
-        } catch (progressError) {
-          console.log('Learning progress not available yet');
-          setTopics(mappedTopics);
+        } catch (backendError: any) {
+          console.warn('Backend learning API failed:', backendError?.message || backendError);
         }
         
-      } catch (error) {
-        console.error('Failed to load learning data:', error);
-        // Keep using mock data as fallback
+        // Fallback: Try chatbot API
+        try {
+          const chatbotResponse = await apiService.getKnowledgeTopics();
+          console.log('Chatbot API response:', chatbotResponse);
+          
+          // Chatbot API returns { topics: [...], total: ..., categories: [...] }
+          let topicsArray: any[] = [];
+          if (chatbotResponse && chatbotResponse.topics && Array.isArray(chatbotResponse.topics)) {
+            topicsArray = chatbotResponse.topics;
+          } else if (Array.isArray(chatbotResponse)) {
+            topicsArray = chatbotResponse;
+          }
+          
+          if (topicsArray.length > 0) {
+            const mappedTopics = topicsArray.map((topic: any) => ({
+              id: topic.id || topic.topicId || topic.topic_id || `topic_${Date.now()}_${Math.random()}`,
+              title: topic.name || topic.title || 'Untitled Topic',
+              icon: getCategoryIcon(topic.category || 'Fundamentals'),
+              completed: false,
+              lessons: getDifficultyLessons(topic.difficulty || 'beginner'),
+              progress: 0,
+              description: topic.description || '',
+              difficulty: topic.difficulty || 'beginner',
+            }));
+            console.log('Mapped topics from chatbot:', mappedTopics);
+            setTopics(mappedTopics);
+            setIsLoading(false);
+            return;
+          } else {
+            console.log('Chatbot returned empty topics array');
+          }
+        } catch (chatbotError: any) {
+          console.warn('Chatbot API also failed:', chatbotError?.message || chatbotError);
+        }
+        
+        // If both APIs fail, use default TOPICS (this ensures the page always shows something)
+        console.log('Using default topics as fallback');
+        setTopics(TOPICS);
+        
+      } catch (error: any) {
+        console.error('Failed to load learning data:', error?.message || error);
+        // On error, still show default topics so page isn't broken
+        setTopics(TOPICS);
       } finally {
         setIsLoading(false);
       }
@@ -136,49 +178,69 @@ export default function LearningTopicsScreen() {
   const onRefresh = async () => {
     setRefreshing(true);
     try {
-      const topicsData = await apiService.getKnowledgeTopics();
-      const mappedTopics = topicsData.map((topic: any) => ({
-        id: topic.id,
-        title: topic.title,
-        icon: getCategoryIcon(topic.category),
-        completed: false,
-        lessons: getDifficultyLessons(topic.difficulty),
-        progress: 0
-      }));
-      setTopics(mappedTopics);
-      
+      // Try backend API first
       try {
-        const progressData = await apiService.getUserLearningProgress();
-        setLearningProgress(progressData);
-        
-        // Merge progress into topics state
-        if (progressData && progressData.topicsProgress) {
-          const progressMap = new Map(
-            (progressData.topicsProgress || []).map((p: any) => [p.topicId || p.topic_id, p])
-          );
-          
-          const mappedTopicsWithProgress = mappedTopics.map(topic => {
-            const progress = progressMap.get(topic.id);
-            if (progress) {
-              return {
-                ...topic,
-                progress: progress.progressPercent || progress.progress_percent || 0,
-                completed: progress.completed || progress.isCompleted || false,
-              };
-            }
-            return topic;
-          });
-          
-          setTopics(mappedTopicsWithProgress);
-        } else {
+        const response = await apiService.getLearningTopics();
+        if (response && response.success && response.data && Array.isArray(response.data) && response.data.length > 0) {
+          const mappedTopics = response.data.map((topic: any) => ({
+            id: topic.TopicID?.toString() || topic.topicId,
+            title: topic.Title || topic.title,
+            icon: getCategoryIcon(topic.category || topic.Difficulty || 'Fundamentals'),
+            completed: topic.IsCompleted || false,
+            lessons: topic.EstimatedDuration || getDifficultyLessons(topic.Difficulty || 'beginner'),
+            progress: topic.Progress || 0,
+            description: topic.Description || topic.description,
+            difficulty: topic.Difficulty || topic.difficulty || 'beginner',
+            xpReward: topic.XPReward || topic.xpReward || 0,
+            coinReward: topic.CoinReward || topic.coinReward || 0,
+          }));
           setTopics(mappedTopics);
+          
+          try {
+            const progressData = await apiService.getUserLearningProgress();
+            setLearningProgress(progressData);
+          } catch (progressError) {
+            console.log('Progress not available');
+          }
+          setRefreshing(false);
+          return;
         }
-      } catch (progressError) {
-        console.log('Learning progress not available yet');
-        setTopics(mappedTopics);
+      } catch (backendError: any) {
+        console.warn('Backend refresh failed, trying chatbot:', backendError?.message || backendError);
       }
-    } catch (error) {
-      console.error('Failed to refresh learning data:', error);
+      
+      // Fallback to chatbot
+      try {
+        const chatbotResponse = await apiService.getKnowledgeTopics();
+        let topicsArray: any[] = [];
+        if (chatbotResponse && chatbotResponse.topics && Array.isArray(chatbotResponse.topics)) {
+          topicsArray = chatbotResponse.topics;
+        } else if (Array.isArray(chatbotResponse)) {
+          topicsArray = chatbotResponse;
+        }
+        
+        if (topicsArray.length > 0) {
+          const mappedTopics = topicsArray.map((topic: any) => ({
+            id: topic.id || topic.topicId,
+            title: topic.name || topic.title,
+            icon: getCategoryIcon(topic.category || 'Fundamentals'),
+            completed: false,
+            lessons: getDifficultyLessons(topic.difficulty || 'beginner'),
+            progress: 0,
+            description: topic.description || '',
+            difficulty: topic.difficulty || 'beginner',
+          }));
+          setTopics(mappedTopics);
+        } else {
+          setTopics(TOPICS); // Fallback to defaults
+        }
+      } catch (chatbotError: any) {
+        console.warn('Chatbot refresh failed:', chatbotError?.message || chatbotError);
+        setTopics(TOPICS); // Fallback to defaults
+      }
+    } catch (error: any) {
+      console.error('Failed to refresh learning data:', error?.message || error);
+      setTopics(TOPICS); // Fallback to defaults
     } finally {
       setRefreshing(false);
     }
@@ -188,9 +250,9 @@ export default function LearningTopicsScreen() {
   const completedLessons = topics.reduce((sum, t) => sum + Math.floor(t.lessons * t.progress / 100), 0);
   const overallProgress = (completedLessons / totalLessons) * 100;
 
-  // Handle topic selection - route to AI chat with learning mode
+  // Handle topic selection - route to lesson detail screen
   const handleTopicPress = (topic: any) => {
-    router.push(`/ai-chat?topic=${topic.id}&mode=learning`);
+    router.push(`/lesson-detail?topicId=${topic.id}&topicTitle=${encodeURIComponent(topic.title)}`);
   };
 
   return (
@@ -207,7 +269,9 @@ export default function LearningTopicsScreen() {
           <Ionicons name="arrow-back" size={24} color={theme.text} />
         </Pressable>
         <Text variant="h3" weight="semibold" style={styles.headerTitle}>Learning</Text>
-        <View style={styles.headerRight} />
+        <Pressable onPress={onRefresh} style={styles.refreshButton}>
+          <Ionicons name="refresh" size={24} color={theme.primary} />
+        </Pressable>
       </View>
       
       <ScrollView 
@@ -235,50 +299,133 @@ export default function LearningTopicsScreen() {
         </Card>
 
         {/* Topics List */}
-        {topics.map((topic) => (
-          <Pressable 
-            key={topic.id}
-            onPress={() => handleTopicPress(topic)}
-          >
-            <Card style={styles.topicCard}>
-              <View style={styles.topicHeader}>
-                <View style={[styles.iconCircle, { backgroundColor: theme.primary + '20' }]}>
-                  <Icon name={topic.icon as any} size={28} color={theme.primary} />
-                </View>
-                <View style={styles.topicInfo}>
-                  <Text variant="body" weight="semibold">{topic.title}</Text>
-                  <Text variant="small" muted>
-                    {topic.lessons} lessons • {topic.progress}% complete
-                  </Text>
-                </View>
-                {topic.completed && (
-                  <Icon name="check-shield" size={24} color={theme.primary} />
-                )}
-              </View>
-
-              {/* Progress Bar */}
-              {topic.progress > 0 && (
-                <View style={styles.progressContainer}>
-                  <View style={[styles.progressBar, { backgroundColor: theme.border }]}>
-                    <View 
-                      style={[
-                        styles.progressFill,
-                        { backgroundColor: theme.primary, width: `${topic.progress}%` }
-                      ]} 
+        {isLoading ? (
+          <Card style={styles.topicCard}>
+            <View style={styles.loadingContainer}>
+              <Text variant="body" muted center>Loading topics...</Text>
+            </View>
+          </Card>
+        ) : topics.length === 0 ? (
+          <Card style={styles.topicCard}>
+            <View style={styles.emptyContainer}>
+              <Icon name="trophy" size={48} color={theme.muted} />
+              <Text variant="h3" weight="semibold" center style={{ marginTop: tokens.spacing.md }}>
+                No Topics Available
+              </Text>
+              <Text variant="small" muted center style={{ marginTop: tokens.spacing.sm }}>
+                Learning topics will appear here once they're available.
+              </Text>
+              <Button 
+                variant="primary" 
+                size="medium" 
+                onPress={onRefresh}
+                style={{ marginTop: tokens.spacing.md }}
+              >
+                Refresh
+              </Button>
+            </View>
+          </Card>
+        ) : (
+          topics.map((topic) => (
+            <Pressable 
+              key={topic.id}
+              onPress={() => handleTopicPress(topic)}
+            >
+              <Card style={styles.topicCard} elevation="low">
+                <View style={styles.topicHeader}>
+                  <View style={[
+                    styles.iconCircle, 
+                    { 
+                      backgroundColor: topic.completed 
+                        ? theme.success + '20' 
+                        : topic.progress > 0 
+                        ? theme.primary + '20' 
+                        : theme.surface 
+                    }
+                  ]}>
+                    <Icon 
+                      name={topic.icon as any} 
+                      size={28} 
+                      color={topic.completed ? theme.success : theme.primary} 
                     />
                   </View>
-                  <Text variant="xs" muted>{topic.progress}%</Text>
+                  <View style={styles.topicInfo}>
+                    <View style={styles.topicTitleRow}>
+                      <Text variant="body" weight="semibold">{topic.title}</Text>
+                      {topic.completed && (
+                        <Badge variant="success" size="small">
+                          <Icon name="check-shield" size={12} color="#FFFFFF" />
+                        </Badge>
+                      )}
+                    </View>
+                    <Text variant="small" muted>
+                      {topic.lessons} lessons
+                      {topic.progress > 0 && ` • ${topic.progress}% complete`}
+                      {topic.difficulty && ` • ${topic.difficulty}`}
+                    </Text>
+                    {topic.description && (
+                      <Text variant="xs" muted style={{ marginTop: tokens.spacing.xs }}>
+                        {topic.description}
+                      </Text>
+                    )}
+                  </View>
+                  <Ionicons 
+                    name="chevron-forward" 
+                    size={20} 
+                    color={theme.muted} 
+                  />
                 </View>
-              )}
 
-              {topic.progress === 0 && (
-                <Button variant="secondary" size="small">
-                  Start Learning
-                </Button>
-              )}
-            </Card>
-          </Pressable>
-        ))}
+                {/* Progress Bar */}
+                {topic.progress > 0 && (
+                  <View style={styles.progressContainer}>
+                    <View style={[styles.progressBar, { backgroundColor: theme.border }]}>
+                      <View 
+                        style={[
+                          styles.progressFill,
+                          { 
+                            backgroundColor: topic.completed ? theme.success : theme.primary, 
+                            width: `${topic.progress}%` 
+                          }
+                        ]} 
+                      />
+                    </View>
+                    <Text variant="xs" muted>{topic.progress}%</Text>
+                  </View>
+                )}
+
+                {/* Rewards Preview */}
+                {(topic.xpReward || topic.coinReward) && (
+                  <View style={styles.rewardsPreview}>
+                    {topic.xpReward > 0 && (
+                      <View style={[styles.rewardBadge, { backgroundColor: theme.surface }]}>
+                        <Icon name="xp" size={14} color={theme.primary} />
+                        <Text variant="xs" muted>{topic.xpReward} XP</Text>
+                      </View>
+                    )}
+                    {topic.coinReward > 0 && (
+                      <View style={[styles.rewardBadge, { backgroundColor: theme.surface }]}>
+                        <Icon name="coin" size={14} color={theme.yellow} />
+                        <Text variant="xs" muted>{topic.coinReward} Coins</Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+
+                {topic.progress === 0 && !topic.completed && (
+                  <Button 
+                    variant="primary" 
+                    size="small" 
+                    style={{ marginTop: tokens.spacing.sm }}
+                    onPress={() => handleTopicPress(topic)}
+                  >
+                    Start Learning
+                  </Button>
+                )}
+              </Card>
+            </Pressable>
+          ))
+        )}
 
         <View style={{ height: 80 }} />
       </ScrollView>
@@ -308,8 +455,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginHorizontal: tokens.spacing.md,
   },
-  headerRight: {
-    width: 40,
+  refreshButton: {
+    padding: tokens.spacing.xs,
+    marginRight: -tokens.spacing.xs,
   },
   scrollView: { flex: 1 },
   content: {
@@ -360,6 +508,34 @@ const styles = StyleSheet.create({
   },
   progressFill: {
     height: '100%',
+    borderRadius: tokens.radius.sm,
+  },
+  loadingContainer: {
+    padding: tokens.spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyContainer: {
+    padding: tokens.spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  topicTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.xs,
+  },
+  rewardsPreview: {
+    flexDirection: 'row',
+    gap: tokens.spacing.sm,
+    marginTop: tokens.spacing.xs,
+  },
+  rewardBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.xs,
+    paddingHorizontal: tokens.spacing.xs,
+    paddingVertical: 2,
     borderRadius: tokens.radius.sm,
   },
 });

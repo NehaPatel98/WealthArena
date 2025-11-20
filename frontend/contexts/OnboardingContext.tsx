@@ -82,7 +82,9 @@ export function OnboardingProvider({ children }: Readonly<{ children: React.Reac
   const [userAnswers, setUserAnswers] = useState<OnboardingAnswer[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
-  const [estimatedQuestionsRemaining, setEstimatedQuestionsRemaining] = useState(5);
+  const [estimatedQuestionsRemaining, setEstimatedQuestionsRemaining] = useState(0);
+  const [questionCount, setQuestionCount] = useState(0);
+  const MAX_QUESTIONS = 8; // Maximum 8 questions
   const [userProfile, setUserProfile] = useState<Partial<OnboardingProfile>>({});
   const [stage, setStage] = useState<'welcome' | 'questions' | 'avatar' | 'summary' | 'complete'>('welcome');
 
@@ -127,7 +129,9 @@ export function OnboardingProvider({ children }: Readonly<{ children: React.Reac
   // Save progress to AsyncStorage
   const saveProgress = async () => {
     try {
+      // Include user ID to ensure progress belongs to current user
       const progressData = {
+        userId: user?.user_id || user?.id,
         sessionId,
         conversationHistory,
         userAnswers,
@@ -147,6 +151,20 @@ export function OnboardingProvider({ children }: Readonly<{ children: React.Reac
       const savedProgress = await AsyncStorage.getItem('onboarding_progress');
       if (savedProgress) {
         const progressData = JSON.parse(savedProgress);
+        
+        // CRITICAL: Check if progress belongs to current user
+        const savedUserId = progressData.userId;
+        const currentUserId = user?.user_id || user?.id;
+        
+        if (savedUserId !== currentUserId) {
+          console.log('Onboarding progress belongs to different user, clearing...', {
+            savedUserId,
+            currentUserId
+          });
+          // Clear progress from different user
+          await AsyncStorage.removeItem('onboarding_progress');
+          return false;
+        }
         
         // Check if progress is recent (within 24 hours)
         const savedTime = new Date(progressData.timestamp);
@@ -171,6 +189,49 @@ export function OnboardingProvider({ children }: Readonly<{ children: React.Reac
       return false;
     }
   };
+  
+  // Clear onboarding state when user changes
+  useEffect(() => {
+    const clearOnboardingForNewUser = async () => {
+      if (!user) {
+        // User logged out - clear everything
+        setSessionId(null);
+        setConversationHistory([]);
+        setCurrentQuestion(null);
+        setUserAnswers([]);
+        setUserProfile({});
+        setStage('welcome');
+        await AsyncStorage.removeItem('onboarding_progress');
+        return;
+      }
+      
+      // Check if saved progress belongs to current user
+      try {
+        const savedProgress = await AsyncStorage.getItem('onboarding_progress');
+        if (savedProgress) {
+          const progressData = JSON.parse(savedProgress);
+          const savedUserId = progressData.userId;
+          const currentUserId = user?.user_id || user?.id;
+          
+          if (savedUserId !== currentUserId) {
+            console.log('Clearing onboarding progress from different user');
+            // Clear progress from different user
+            setSessionId(null);
+            setConversationHistory([]);
+            setCurrentQuestion(null);
+            setUserAnswers([]);
+            setUserProfile({});
+            setStage('welcome');
+            await AsyncStorage.removeItem('onboarding_progress');
+          }
+        }
+      } catch (error) {
+        console.error('Error checking onboarding progress:', error);
+      }
+    };
+    
+    clearOnboardingForNewUser();
+  }, [user?.user_id, user?.id]); // Re-run when user ID changes
 
   // Initialize onboarding session
   const initializeOnboarding = async () => {
@@ -200,9 +261,19 @@ export function OnboardingProvider({ children }: Readonly<{ children: React.Reac
       ]).catch(() => false);
       
       if (!isChatbotAvailable) {
-        // Fallback to static onboarding
-        console.warn('Chatbot unavailable, using static onboarding');
-        await initializeStaticOnboarding();
+        // Don't fallback to static - show error and let user retry
+        console.error('Chatbot unavailable - cannot proceed without AI onboarding');
+        setIsLoading(false);
+        const errorMessage: OnboardingMessage = {
+          id: 'error-init',
+          text: 'Sorry, the AI onboarding service is currently unavailable. Please check your connection and try again.',
+          isBot: true,
+          timestamp: new Date(),
+          type: 'explanation',
+          mascotVariant: 'cautious',
+        };
+        setConversationHistory([errorMessage]);
+        setCurrentQuestion(errorMessage);
         return;
       }
 
@@ -229,7 +300,8 @@ export function OnboardingProvider({ children }: Readonly<{ children: React.Reac
         setConversationHistory([welcomeMessage]);
         setCurrentQuestion(welcomeMessage);
         setStage('questions');
-        setEstimatedQuestionsRemaining(response.estimatedQuestions || 5);
+        setQuestionCount(0);
+        setEstimatedQuestionsRemaining(0); // Don't show remaining count
         
         // Track onboarding start
         await trackAnalytics('onboarding_started', {
@@ -237,76 +309,38 @@ export function OnboardingProvider({ children }: Readonly<{ children: React.Reac
           estimatedQuestions: response.estimatedQuestions || 5,
         });
       } else {
-        // Fallback to static onboarding
-        await initializeStaticOnboarding();
+        // Show error instead of falling back to static
+        console.error('Onboarding start failed:', response.error);
+        setIsLoading(false);
+        const errorMessage: OnboardingMessage = {
+          id: 'error-init',
+          text: 'Sorry, I couldn\'t start your onboarding session. Please try again.',
+          isBot: true,
+          timestamp: new Date(),
+          type: 'explanation',
+          mascotVariant: 'cautious',
+        };
+        setConversationHistory([errorMessage]);
+        setCurrentQuestion(errorMessage);
       }
     } catch (error) {
       console.error('Failed to initialize onboarding:', error);
-      // Fallback to static onboarding
-      console.log('Falling back to static onboarding due to error');
-      await initializeStaticOnboarding();
+      // Show error instead of falling back to static
+      setIsLoading(false);
+      const errorMessage: OnboardingMessage = {
+        id: 'error-init',
+        text: 'Sorry, I couldn\'t connect to the onboarding service. Please check your connection and try again.',
+        isBot: true,
+        timestamp: new Date(),
+        type: 'explanation',
+        mascotVariant: 'cautious',
+      };
+      setConversationHistory([errorMessage]);
+      setCurrentQuestion(errorMessage);
     } finally {
       console.log('Onboarding initialization complete, setting loading to false');
       setIsLoading(false);
     }
-  };
-
-  // Static onboarding fallback
-  const initializeStaticOnboarding = async () => {
-    console.log('Initializing static onboarding fallback');
-    
-    const staticQuestions = [
-      {
-        id: 'static-1',
-        text: `Hi ${user?.firstName || user?.username}! 🎉 Welcome to WealthArena! Let's get to know you better.`,
-        isBot: true,
-        timestamp: new Date(),
-        type: 'question' as const,
-        questionType: 'text' as const,
-        mascotVariant: 'excited' as const,
-      },
-      {
-        id: 'static-2',
-        text: 'What\'s your experience level with investing?',
-        isBot: true,
-        timestamp: new Date(),
-        type: 'question' as const,
-        questionType: 'choice' as const,
-        options: ['Complete beginner', 'Some experience', 'Experienced'],
-        mascotVariant: 'learning' as const,
-      },
-      {
-        id: 'static-3',
-        text: 'What\'s your primary investment goal?',
-        isBot: true,
-        timestamp: new Date(),
-        type: 'question' as const,
-        questionType: 'choice' as const,
-        options: ['Learn the basics', 'Build wealth', 'Beat the market', 'Retirement planning'],
-        mascotVariant: 'thinking' as const,
-      },
-      {
-        id: 'static-4',
-        text: 'How comfortable are you with investment risk?',
-        isBot: true,
-        timestamp: new Date(),
-        type: 'question' as const,
-        questionType: 'choice' as const,
-        options: ['Very cautious', 'Moderate', 'Aggressive'],
-        mascotVariant: 'confident' as const,
-      },
-    ];
-
-    setConversationHistory(staticQuestions);
-    setCurrentQuestion(staticQuestions[0]);
-    setStage('questions');
-    setEstimatedQuestionsRemaining(4);
-    
-    // Track static onboarding start
-    await trackAnalytics('onboarding_started', {
-      mode: 'static',
-      estimatedQuestions: 4,
-    });
   };
 
   // Submit answer and get next question
@@ -345,9 +379,20 @@ export function OnboardingProvider({ children }: Readonly<{ children: React.Reac
         timeSpent: Date.now() - (currentQuestion.timestamp?.getTime() || Date.now()),
       });
 
-      // Handle static onboarding
-      if (!sessionId || currentQuestion.id.startsWith('static-')) {
-        await handleStaticOnboarding(answer);
+      // Only proceed with AI onboarding - no static fallback
+      if (!sessionId) {
+        console.error('No session ID - cannot process answer');
+        setIsTyping(false);
+        setIsLoading(false);
+        const errorMessage: OnboardingMessage = {
+          id: 'error-no-session',
+          text: 'Sorry, I lost your session. Please refresh and try again.',
+          isBot: true,
+          timestamp: new Date(),
+          type: 'explanation',
+          mascotVariant: 'cautious',
+        };
+        setConversationHistory(prev => [...prev, errorMessage]);
         return;
       }
 
@@ -361,6 +406,21 @@ export function OnboardingProvider({ children }: Readonly<{ children: React.Reac
         }
       );
 
+      // Check if we've reached max questions
+      const currentQuestionCount = userAnswers.length + 1; // +1 for the answer just submitted
+      
+      if (currentQuestionCount >= MAX_QUESTIONS) {
+        // Reached max questions - complete onboarding
+        console.log(`Reached max questions (${MAX_QUESTIONS}), completing onboarding`);
+        setStage('avatar');
+        await trackAnalytics('onboarding_questions_complete', {
+          totalQuestions: currentQuestionCount,
+          totalAnswers: userAnswers.length + 1,
+          reason: 'max_questions_reached',
+        });
+        return;
+      }
+      
       if (response.success && response.nextQuestion) {
         const nextQuestion: OnboardingMessage = {
           id: response.nextQuestion.id,
@@ -375,48 +435,39 @@ export function OnboardingProvider({ children }: Readonly<{ children: React.Reac
 
         setCurrentQuestion(nextQuestion);
         setConversationHistory(prev => [...prev, nextQuestion]);
-        setEstimatedQuestionsRemaining(response.estimatedRemaining || Math.max(0, estimatedQuestionsRemaining - 1));
+        setQuestionCount(currentQuestionCount);
+        setEstimatedQuestionsRemaining(0); // Don't show remaining count
 
         // Update user profile based on AI analysis
         if (response.profileUpdates) {
           setUserProfile(prev => ({ ...prev, ...response.profileUpdates }));
         }
-      } else if (response.complete) {
+      } else if (response.complete || currentQuestionCount >= MAX_QUESTIONS) {
         // Onboarding complete, move to avatar selection
         setStage('avatar');
         await trackAnalytics('onboarding_questions_complete', {
-          totalQuestions: conversationHistory.filter(msg => msg.isBot && msg.type === 'question').length,
-          totalAnswers: userAnswers.length,
+          totalQuestions: currentQuestionCount,
+          totalAnswers: userAnswers.length + 1,
         });
       }
     } catch (error) {
       console.error('Failed to submit answer:', error);
-      // Fallback to static onboarding
-      await handleStaticOnboarding(answer);
+      // Show error instead of falling back to static
+      setIsTyping(false);
+      setIsLoading(false);
+      const errorMessage: OnboardingMessage = {
+        id: `error-${Date.now()}`,
+        text: 'Sorry, I couldn\'t process your answer. Please try again.',
+        isBot: true,
+        timestamp: new Date(),
+        type: 'explanation',
+        mascotVariant: 'cautious',
+      };
+      setConversationHistory(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
       setIsTyping(false);
       await saveProgress();
-    }
-  };
-
-  // Handle static onboarding progression
-  const handleStaticOnboarding = async (answer: string | string[]) => {
-    const currentIndex = conversationHistory.findIndex(msg => msg.id === currentQuestion?.id);
-    const nextIndex = currentIndex + 1;
-    
-    if (nextIndex < conversationHistory.length) {
-      // Move to next static question
-      const nextQuestion = conversationHistory[nextIndex];
-      setCurrentQuestion(nextQuestion);
-      setEstimatedQuestionsRemaining(prev => Math.max(0, prev - 1));
-    } else {
-      // Static onboarding complete, move to avatar selection
-      setStage('avatar');
-      await trackAnalytics('onboarding_questions_complete', {
-        totalQuestions: conversationHistory.filter(msg => msg.isBot && msg.type === 'question').length,
-        totalAnswers: userAnswers.length,
-      });
     }
   };
 
@@ -462,7 +513,23 @@ export function OnboardingProvider({ children }: Readonly<{ children: React.Reac
 
   // Complete onboarding
   const completeOnboarding = async () => {
-    if (!sessionId) return;
+    if (!sessionId) {
+      console.warn('No session ID, cannot complete onboarding');
+      return;
+    }
+
+    // Prevent duplicate calls only if already loading (not if stage is complete)
+    // Stage can be 'complete' but we still need to call the backend
+    if (isLoading) {
+      console.log('Onboarding completion already in progress');
+      return;
+    }
+    
+    // If stage is already 'complete', we might still need to call backend
+    // So we allow it but log it
+    if (stage === 'complete') {
+      console.log('Stage is already complete, but calling backend to ensure completion is saved');
+    }
 
     setIsLoading(true);
     try {

@@ -4,6 +4,7 @@
  */
 
 import { rlAgentService } from './rlAgentService';
+import { API_CONFIG } from '../config/apiConfig';
 
 export interface PortfolioRecommendation {
   id: string;
@@ -74,7 +75,7 @@ export interface PersonalizedRecommendations {
 }
 
 class RecommendationService {
-  private baseUrl = 'http://localhost:3000'; // Backend API URL
+  private baseUrl = API_CONFIG.BACKEND_BASE_URL; // Backend API URL (dynamically resolved)
 
   /**
    * Get personalized recommendations based on user profile

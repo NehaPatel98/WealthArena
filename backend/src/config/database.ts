@@ -35,6 +35,12 @@ let pool: sql.ConnectionPool | null = null;
  * Get database connection pool
  */
 export async function getPool(): Promise<sql.ConnectionPool> {
+  // Check if using mock database - don't attempt connection
+  const useMockDb = process.env.USE_MOCK_DB === 'true';
+  if (useMockDb) {
+    throw new Error('Database operations not available in mock mode. Use mock database functions instead.');
+  }
+
   if (!pool) {
     try {
       pool = await new sql.ConnectionPool(config).connect();
@@ -53,6 +59,13 @@ export async function getPool(): Promise<sql.ConnectionPool> {
 }
 
 /**
+ * Check if mock database mode is enabled
+ */
+export function isMockMode(): boolean {
+  return process.env.USE_MOCK_DB === 'true';
+}
+
+/**
  * Execute a query with parameters
  */
 export async function executeQuery<T = unknown>(
@@ -60,6 +73,22 @@ export async function executeQuery<T = unknown>(
   params?: Record<string, unknown>
 ): Promise<sql.IResult<T>> {
   const startTime = Date.now();
+  
+  // Check if using mock database
+  const useMockDb = process.env.USE_MOCK_DB === 'true';
+  if (useMockDb) {
+    // Return mock empty result set in mock mode
+    // Routes should check for mock mode themselves and provide mock data
+    const duration = (Date.now() - startTime) / 1000;
+    recordDbQuery(duration, 'query');
+    
+    // Return empty result set structure that matches sql.IResult<T>
+    return {
+      recordset: [] as T[],
+      rowsAffected: [0],
+    } as sql.IResult<T>;
+  }
+  
   try {
     const pool = await getPool();
     const request = pool.request();

@@ -452,6 +452,48 @@ class RLModelService:
         else:
             return 'medium'
     
+    def _add_technical_indicators(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Add technical indicators to the dataframe
+        Required for RL model inference
+        """
+        if data.empty or 'Close' not in data.columns:
+            return data
+        
+        df = data.copy()
+        
+        # Calculate RSI (Relative Strength Index)
+        if 'RSI' not in df.columns:
+            delta = df['Close'].diff()
+            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+            rs = gain / loss
+            df['RSI'] = 100 - (100 / (1 + rs))
+            df['RSI'] = df['RSI'].fillna(50)  # Default to neutral
+        
+        # Calculate MACD (Moving Average Convergence Divergence)
+        if 'MACD' not in df.columns:
+            ema_12 = df['Close'].ewm(span=12, adjust=False).mean()
+            ema_26 = df['Close'].ewm(span=26, adjust=False).mean()
+            df['MACD'] = ema_12 - ema_26
+            df['MACD'] = df['MACD'].fillna(0)
+        
+        # Calculate Volume Ratio (current volume vs average)
+        if 'Volume_Ratio' not in df.columns and 'Volume' in df.columns:
+            avg_volume = df['Volume'].rolling(window=20).mean()
+            df['Volume_Ratio'] = df['Volume'] / avg_volume
+            df['Volume_Ratio'] = df['Volume_Ratio'].fillna(1.0)
+        elif 'Volume_Ratio' not in df.columns:
+            df['Volume_Ratio'] = 1.0
+        
+        # Add moving averages if not present
+        if 'SMA_20' not in df.columns:
+            df['SMA_20'] = df['Close'].rolling(window=20).mean()
+        if 'SMA_50' not in df.columns:
+            df['SMA_50'] = df['Close'].rolling(window=50).mean()
+        
+        return df
+    
     def _get_trend_status(self, data: pd.DataFrame) -> Dict[str, Any]:
         """Get trend status from price and moving averages"""
         if len(data) < 50:

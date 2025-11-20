@@ -733,7 +733,7 @@ def main() -> None:
         
         # Validate merged counts match expectations (allow some tolerance for existing data updates)
         if staged_count > 0 and merged_total < staged_count * 0.9:  # Allow 10% tolerance
-                print(f"[WARNING] WARNING: MERGE counts may not match staged rows.")
+            print(f"[WARNING] WARNING: MERGE counts may not match staged rows.")
             print(f"   Staged: {staged_count}, Merged (inserted+updated): {merged_total}")
             print(f"   Proceeding with deletion after validation (tolerance: 10%)")
         

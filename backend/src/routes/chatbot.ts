@@ -39,25 +39,64 @@ router.post('/chat', async (req: Request, res: Response) => {
       });
     }
 
+    // Log the chatbot API URL being used
+    // eslint-disable-next-line no-console
+    console.log(`[CHATBOT] Forwarding chat request to chatbot service: ${CHATBOT_API_URL}/v1/chat`);
+
     // Forward request to chatbot API
     const response = await axios.post(`${CHATBOT_API_URL}/v1/chat`, {
       message,
       user_id,
       context,
+    }, {
+      timeout: 30000, // 30 second timeout
     });
 
+    // eslint-disable-next-line no-console
+    console.log(`[CHATBOT] API response received successfully`);
+    
     res.json({
       success: true,
       data: response.data,
     });
   } catch (error: unknown) {
+    const axiosError = error as { response?: { status?: number; data?: unknown }; code?: string; message?: string };
     const errorMessage = error instanceof Error ? error.message : String(error);
-    const statusCode = (error as { response?: { status?: number } })?.response?.status || 500;
+    const statusCode = axiosError.response?.status || 500;
+    
+    // Detailed error logging
     // eslint-disable-next-line no-console
-    console.error('Error calling chatbot API:', errorMessage);
+    console.error('[CHATBOT ERROR] Error calling chatbot API:');
+    // eslint-disable-next-line no-console
+    console.error(`   URL: ${CHATBOT_API_URL}/v1/chat`);
+    // eslint-disable-next-line no-console
+    console.error(`   Error Code: ${axiosError.code || 'N/A'}`);
+    // eslint-disable-next-line no-console
+    console.error(`   HTTP Status: ${statusCode}`);
+    // eslint-disable-next-line no-console
+    console.error(`   Error Message: ${errorMessage}`);
+    if (axiosError.response?.data) {
+      // eslint-disable-next-line no-console
+      console.error(`   Response Data:`, JSON.stringify(axiosError.response.data, null, 2));
+    }
+    
+    // Provide helpful error messages based on error type
+    let userMessage = 'Failed to get chatbot response';
+    if (axiosError.code === 'ECONNREFUSED') {
+      userMessage = 'Chatbot service is not running. Please start the chatbot service on port 8000.';
+      // eslint-disable-next-line no-console
+      console.error('   Tip: Make sure the chatbot service is running. Run: cd chatbot && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000');
+    } else if (axiosError.code === 'ETIMEDOUT' || axiosError.code === 'ECONNABORTED') {
+      userMessage = 'Chatbot service request timed out. The service may be overloaded or not responding.';
+    } else if (statusCode === 500) {
+      userMessage = 'Chatbot service encountered an error. Please check if GROQ_API_KEY is configured.';
+      // eslint-disable-next-line no-console
+      console.error('   Tip: Check chatbot/.env file has GROQ_API_KEY set. Get key from: https://console.groq.com/keys');
+    }
+    
     res.status(statusCode).json({
       success: false,
-      message: 'Failed to get chatbot response',
+      message: userMessage,
       error: errorMessage,
     });
   }

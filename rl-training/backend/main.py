@@ -15,6 +15,8 @@ import numpy as np
 import json
 import logging
 import sys
+import os
+import requests
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -23,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 # Import our services
 from model_service import get_model_service
 from database import get_database
+from live_data_service import get_live_data_service
 
 # Configure logging
 logging.basicConfig(
@@ -50,6 +53,7 @@ app.add_middleware(
 # Initialize services
 model_service = get_model_service()
 db_service = get_database()
+live_data_service = get_live_data_service()
 
 # Define data directories
 DATA_DIR = Path(__file__).parent.parent / "data"
@@ -86,15 +90,156 @@ class TopSetupsRequest(BaseModel):
 
 # ==================== Helper Functions ====================
 
-def load_symbol_data(symbol: str, use_features: bool = True, days: int = None) -> Optional[pd.DataFrame]:
-    """Load data for a symbol using database service"""
+def load_from_main_backend_json(symbol: str, days: int = None) -> Optional[pd.DataFrame]:
+    """
+    Load data from main backend's local-market-data.json file
+    This is the primary source when USE_MOCK_DB=true
+    """
     try:
+        # Path to main backend's JSON file (relative to rl-training/backend/)
+        # Go up to project root, then to backend/data/
+        project_root = Path(__file__).parent.parent.parent
+        json_file = project_root / "backend" / "data" / "local-market-data.json"
+        
+        if not json_file.exists():
+            logger.debug(f"Main backend JSON file not found at {json_file}")
+            return None
+        
+        # Read and parse JSON
+        with open(json_file, 'r', encoding='utf-8') as f:
+            file_data = json.load(f)
+        
+        # Handle both old and new format
+        data_dict = file_data.get('data', file_data) if isinstance(file_data, dict) and 'data' in file_data else file_data
+        
+        if symbol not in data_dict:
+            logger.debug(f"Symbol {symbol} not found in main backend JSON file")
+            return None
+        
+        # Get records for symbol
+        records = data_dict[symbol]
+        if not records or len(records) == 0:
+            return None
+        
+        # Convert to DataFrame
+        df = pd.DataFrame(records)
+        
+        # Rename columns to match expected format
+        column_mapping = {
+            'Date': 'Date',
+            'Open': 'Open',
+            'High': 'High',
+            'Low': 'Low',
+            'Close': 'Close',
+            'Volume': 'Volume',
+            'AssetType': 'AssetType'
+        }
+        
+        # Ensure Date column exists and is datetime
+        if 'Date' in df.columns:
+            df['Date'] = pd.to_datetime(df['Date'])
+        else:
+            logger.warning(f"Date column not found for {symbol}")
+            return None
+        
+        # Sort by date
+        df = df.sort_values('Date')
+        
+        # Limit to requested days
+        if days:
+            df = df.tail(days)
+        
+        logger.info(f"Loaded {len(df)} records for {symbol} from main backend JSON file")
+        return df
+        
+    except Exception as e:
+        logger.debug(f"Error loading from main backend JSON for {symbol}: {e}")
+        return None
+
+
+def load_symbol_data(symbol: str, use_features: bool = True, days: int = None) -> Optional[pd.DataFrame]:
+    """
+    Load data for a symbol - tries multiple sources in priority order
+    
+    Priority:
+    1. Main backend JSON file (local-market-data.json) - primary source for processed data
+    2. Main backend API (if JSON file unavailable)
+    3. Live data from yfinance (real-time)
+    4. Database service (cached/processed data)
+    5. None if all fail
+    """
+    try:
+        # First, try main backend JSON file (fastest, no network)
+        logger.info(f"Attempting to load data for {symbol} from main backend JSON file")
+        json_data = load_from_main_backend_json(symbol, days)
+        
+        if json_data is not None and not json_data.empty:
+            logger.info(f"Using main backend JSON data for {symbol} ({len(json_data)} data points)")
+            
+            # If features are needed, calculate them
+            if use_features:
+                json_data = model_service._add_technical_indicators(json_data)
+            
+            return json_data
+        
+        # Second, try main backend internal API (if JSON file not available)
+        try:
+            backend_url = os.getenv('MAIN_BACKEND_URL', 'http://localhost:3000')
+            # Use internal endpoint (no auth required for service-to-service calls)
+            api_url = f"{backend_url}/api/market-data/internal/history/{symbol}?days={days or 60}"
+            
+            response = requests.get(api_url, timeout=10)
+            
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('success') and result.get('data'):
+                    # Convert API format to DataFrame
+                    df = pd.DataFrame(result['data'])
+                    df['Date'] = pd.to_datetime(df['Date'])
+                    # Ensure columns are properly named
+                    if 'Open' not in df.columns:
+                        df = df.rename(columns={
+                            'open': 'Open',
+                            'high': 'High',
+                            'low': 'Low',
+                            'close': 'Close',
+                            'volume': 'Volume'
+                        })
+                    
+                    if use_features:
+                        df = model_service._add_technical_indicators(df)
+                    
+                    logger.info(f"Using main backend API data for {symbol} ({len(df)} data points)")
+                    return df
+        except Exception as api_error:
+            logger.debug(f"Main backend API unavailable: {api_error}")
+        
+        # Third, try live data from yfinance
+        logger.info(f"Attempting to fetch live data for {symbol}")
+        live_data = live_data_service.get_live_data(symbol, days=days or 60)
+        
+        if live_data is not None and not live_data.empty:
+            logger.info(f"Using live data for {symbol} ({len(live_data)} data points)")
+            
+            # If features are needed, calculate them
+            if use_features:
+                live_data = model_service._add_technical_indicators(live_data)
+            
+            return live_data
+        
+        # Fallback to database service
+        logger.info(f"Trying database service for {symbol}")
         if use_features:
             df = db_service.get_processed_features(symbol, days)
         else:
             df = db_service.get_raw_market_data(symbol, days)
         
-        return df
+        if df is not None and not df.empty:
+            logger.info(f"Using database data for {symbol}")
+            return df
+        
+        logger.warning(f"No data available for {symbol} from any source")
+        return None
     
     except Exception as e:
         logger.error(f"Error loading data for {symbol}: {e}")
@@ -104,18 +249,59 @@ def load_symbol_data(symbol: str, use_features: bool = True, days: int = None) -
 def load_all_symbols_for_asset_type(asset_type: str) -> Dict[str, pd.DataFrame]:
     """Load data for all symbols of a specific asset type"""
     
-    # Map asset types to symbol lists
-    symbol_map = {
-        'stocks': ['AAPL', 'GOOGL', 'MSFT', 'AMZN', 'TSLA', 'NVDA', 'META'],
-        'currency_pairs': ['EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD'],
-        'commodities': ['GC', 'CL', 'SI'],  # Gold, Oil, Silver
-        'crypto': ['BTC-USD', 'ETH-USD', 'SOL-USD']
-    }
+    # First, try to get real symbols from main backend
+    symbols = []
     
-    symbols = symbol_map.get(asset_type, [])
+    try:
+        # Try main backend JSON file first
+        project_root = Path(__file__).parent.parent.parent
+        json_file = project_root / "backend" / "data" / "local-market-data.json"
+        
+        if json_file.exists():
+            with open(json_file, 'r', encoding='utf-8') as f:
+                file_data = json.load(f)
+            
+            data_dict = file_data.get('data', file_data) if isinstance(file_data, dict) and 'data' in file_data else file_data
+            
+            # Get all symbols, optionally filter by asset type
+            all_symbols = list(data_dict.keys())
+            
+            if asset_type:
+                # Filter by asset type
+                asset_type_map = {
+                    'stocks': 'stock',
+                    'currency_pairs': 'forex',
+                    'commodities': 'commodity',
+                    'crypto': 'crypto'
+                }
+                target_type = asset_type_map.get(asset_type, asset_type.lower())
+                
+                symbols = [
+                    s for s in all_symbols 
+                    if data_dict.get(s) and len(data_dict.get(s, [])) > 0 
+                    and data_dict[s][0].get('AssetType', '').lower() == target_type
+                ]
+            else:
+                symbols = all_symbols[:50]  # Limit to first 50 for performance
+            
+            logger.info(f"Found {len(symbols)} symbols from main backend JSON for asset type {asset_type}")
+    except Exception as e:
+        logger.warning(f"Failed to load symbols from main backend JSON: {e}")
+    
+    # Fallback to hardcoded symbols if no real symbols found
+    if not symbols:
+        symbol_map = {
+            'stocks': ['AAPL', 'GOOGL', 'MSFT', 'AMZN', 'TSLA', 'NVDA', 'META'],
+            'currency_pairs': ['EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD'],
+            'commodities': ['GC', 'CL', 'SI'],  # Gold, Oil, Silver
+            'crypto': ['BTC-USD', 'ETH-USD', 'SOL-USD']
+        }
+        symbols = symbol_map.get(asset_type, [])
+        logger.info(f"Using fallback hardcoded symbols for asset type {asset_type}")
+    
+    # Load data for each symbol
     data_dict = {}
-    
-    for symbol in symbols:
+    for symbol in symbols[:20]:  # Limit to 20 symbols for performance
         df = load_symbol_data(symbol, use_features=True)
         if df is not None and len(df) > 0:
             data_dict[symbol] = df
@@ -230,10 +416,34 @@ async def health_check():
     """Health check endpoint"""
     return {
         "status": "healthy",
+        "service": "wealtharena-rl-backend",
+        "version": "1.0.0",
         "timestamp": datetime.now().isoformat(),
         "database": "connected" if db_service else "not_configured",
-        "model_service": "ready" if model_service else "not_ready"
+        "model_service": "ready" if model_service else "not_ready",
+        "live_data_service": "ready" if live_data_service else "not_ready"
     }
+
+@app.get("/data-availability/{symbol}")
+async def check_data_availability(symbol: str):
+    """
+    Check if live data is available for a symbol
+    
+    Returns:
+        Dict with availability status, latest date, and metadata
+    """
+    try:
+        availability = live_data_service.check_data_availability(symbol)
+        return {
+            "success": True,
+            "data": availability
+        }
+    except Exception as e:
+        logger.error(f"Error checking data availability for {symbol}: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
 
 
 @app.post("/api/market-data")

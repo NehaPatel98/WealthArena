@@ -637,6 +637,66 @@ curl http://localhost:8000/metrics
 5. **Vector store issues**: See [TROUBLESHOOTING.md Section 5](docs/TROUBLESHOOTING.md#section-5-chromadb--vector-store-issues)
 6. **Testing issues**: See [TROUBLESHOOTING.md Section 6](docs/TROUBLESHOOTING.md#section-6-testing-issues)
 
+## 📚 RAG Knowledge Base
+
+The chatbot uses a Retrieval-Augmented Generation (RAG) system powered by 20 financial education PDFs stored in the `docs/` folder. This knowledge base provides context-aware responses to user questions.
+
+### Initializing the Knowledge Base
+
+To set up the RAG system, run the PDF ingestion script:
+
+```bash
+python scripts/ingest_pdfs.py
+```
+
+This script will:
+1. Extract text from all PDFs in the `docs/` folder
+2. Split documents into overlapping chunks
+3. Generate embeddings using sentence-transformers
+4. Store everything in a Chroma vector database
+
+The ingestion process typically takes a few minutes depending on the number and size of PDFs.
+
+### How RAG Works
+
+When a user asks a question:
+1. The system retrieves the top 3 most relevant chunks from the PDF knowledge base
+2. These chunks are formatted and added to the LLM prompt as context
+3. The LLM generates a response augmented with this relevant information
+
+### Updating the Knowledge Base
+
+To add new PDFs to the knowledge base:
+1. Place new PDF files in the `docs/` folder
+2. Re-run the ingestion script: `python scripts/ingest_pdfs.py`
+
+The script will clear the existing collection and rebuild it with all PDFs in the folder.
+
+### RAG Configuration
+
+Environment variables that control RAG behavior. These are automatically included in `.env.example` and added by the master setup script:
+
+- `EMBEDDING_MODEL`: Sentence-transformer model for embeddings (default: `sentence-transformers/all-MiniLM-L6-v2`)
+- `RAG_COLLECTION_NAME`: Chroma collection name (default: `financial_knowledge`)
+- `RAG_CHUNK_SIZE`: Size of document chunks in characters (default: `1000`)
+- `RAG_CHUNK_OVERLAP`: Overlap between chunks in characters (default: `200`)
+- `RAG_TOP_K`: Number of relevant chunks to retrieve (default: `3`)
+- `CHROMA_PERSIST_DIR`: Directory for Chroma vector database (default: `data/vectorstore`)
+
+**Note**: These variables are included in `.env.example` and automatically added to `.env`/`.env.local` by the master setup script if missing. For manual setup, copy `.env.example` to `.env` to get all required variables with defaults.
+
+## 🐍 Python Version Compatibility
+
+The chatbot service now supports Python 3.11, 3.12, and 3.13. Dependencies have been updated to use version ranges compatible with all three versions:
+
+- `numpy>=2.1.0` (Python 3.13 compatible)
+- `pandas>=2.2.0` (already compatible)
+- `scikit-learn>=1.5.2` (already compatible)
+- `torch>=2.6.0` (Python 3.13 compatible)
+- `transformers>=4.36.2` (updated from pinned version)
+- `chromadb>=0.4.22` (updated from pinned version)
+- `sentence-transformers>=2.7.0` (updated from pinned version)
+
 ## 📚 Additional Resources
 
 - **API Documentation**: Visit `http://localhost:8000/docs` when server is running

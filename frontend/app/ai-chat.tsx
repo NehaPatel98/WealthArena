@@ -9,6 +9,7 @@ import { AITradingSignal } from '../types/ai-signal';
 import { chatbotService } from '../services/chatbotService';
 import { apiService } from '@/services/apiService';
 import { useGamification } from '@/contexts/GamificationContext';
+import { MarkdownText } from '../components/MarkdownText';
 
 interface Message {
   id: string;
@@ -416,29 +417,146 @@ export default function AIChatScreen() {
         // Learning mode - handle lesson progression
         await handleLearningResponse(userQuestion);
       } else if (userQuestionLower.includes('signal') || userQuestionLower.includes('top 3')) {
-        // First, show a text response
-        setTimeout(() => {
-          const textResponse: Message = {
+        // Fetch real AI signals from backend
+        try {
+          setIsLoading(true);
+          
+          // Try to get real signals from RL backend
+          const rlServiceUrl = process.env.EXPO_PUBLIC_RL_SERVICE_URL || 'http://localhost:5002';
+          let realSignals: any[] = [];
+          
+          try {
+            const rlResponse = await fetch(`${rlServiceUrl}/api/top-setups?asset_type=stocks&limit=3&risk_level=medium`);
+            if (rlResponse.ok) {
+              const rlData = await rlResponse.json();
+              if (rlData.setups && rlData.setups.length > 0) {
+                realSignals = rlData.setups;
+              }
+            }
+          } catch (rlError) {
+            console.warn('RL service unavailable, trying backend signals...');
+          }
+          
+          // Fallback to backend signals
+          if (realSignals.length === 0) {
+            try {
+              const backendSignalsResponse = await apiService.getTopSignals(null, 3);
+              if (backendSignalsResponse.success && backendSignalsResponse.data) {
+                const signals = Array.isArray(backendSignalsResponse.data) 
+                  ? backendSignalsResponse.data 
+                  : backendSignalsResponse.data.signals || [];
+                
+                if (signals.length > 0) {
+                  // Convert backend signals to AI signal format
+                  realSignals = signals.map((sig: any) => ({
+                    symbol: sig.Symbol || sig.symbol,
+                    asset_type: sig.AssetType || sig.assetType || 'stock',
+                    trading_signal: {
+                      signal: sig.Signal || sig.signal || 'HOLD',
+                      confidence: sig.ConfidenceScore || sig.Confidence || 0.5,
+                      model_version: 'v2.3.1'
+                    },
+                    entry_strategy: {
+                      price: sig.EntryPrice || sig.entryPrice || 0,
+                      price_range: [sig.EntryPrice || 0, sig.EntryPrice || 0],
+                      timing: 'immediate',
+                      reasoning: 'AI-generated signal based on technical analysis'
+                    },
+                    take_profit_levels: [{
+                      level: 1,
+                      price: sig.TakeProfit1 || sig.target || 0,
+                      percent_gain: sig.ExpectedReturn || 0,
+                      close_percent: 50,
+                      probability: 0.7,
+                      reasoning: 'Primary target level'
+                    }],
+                    stop_loss: {
+                      price: sig.StopLoss || sig.stopLoss || 0,
+                      percent_loss: -2.0,
+                      type: 'fixed',
+                      reasoning: 'Risk management stop loss'
+                    },
+                    risk_management: {
+                      risk_reward_ratio: 2.0,
+                      max_risk_per_share: 1.0,
+                      max_reward_per_share: 2.0,
+                      win_probability: 0.6,
+                      expected_value: 1.0
+                    },
+                    position_sizing: {
+                      recommended_percent: 5.0,
+                      dollar_amount: 5000,
+                      shares: 10,
+                      max_loss: 100,
+                      method: 'Fixed Percentage',
+                      volatility_adjusted: false
+                    },
+                    model_metadata: {
+                      model_type: 'RL Agent',
+                      agents_used: ['TradingAgent'],
+                      training_date: new Date().toISOString().split('T')[0],
+                      backtest_sharpe: 1.5,
+                      feature_importance: {}
+                    },
+                    indicators_state: {
+                      rsi: { value: 50, status: 'neutral' },
+                      macd: { value: 0, status: 'neutral' },
+                      atr: { value: 1.0, status: 'medium_volatility' },
+                      volume: { value: 1.0, status: 'average' },
+                      trend: { direction: 'up', strength: 'moderate' }
+                    }
+                  }));
+                }
+              }
+            } catch (backendError) {
+              console.warn('Backend signals unavailable:', backendError);
+            }
+          }
+          
+          // Show response
+          if (realSignals.length > 0) {
+            const textResponse: Message = {
+              id: Date.now().toString(),
+              text: `Here are the top ${realSignals.length} AI trading signals based on our latest analysis:`,
+              isBot: true,
+              type: 'text',
+            };
+            setMessages(prev => [...prev, textResponse]);
+
+            // Show each real signal
+            realSignals.forEach((signal, index) => {
+              setTimeout(() => {
+                const signalMessage: Message = {
+                  id: `${Date.now()}-signal-${index}`,
+                  signal: signal,
+                  isBot: true,
+                  type: 'signal',
+                };
+                setMessages(prev => [...prev, signalMessage]);
+              }, (index + 1) * 500);
+            });
+          } else {
+            // No signals available
+            const noSignalsResponse: Message = {
+              id: Date.now().toString(),
+              text: "I don't have any AI trading signals available at the moment. The RL models are still analyzing the market, or there may be no strong signals detected. Please check back later or try asking about specific trading concepts!",
+              isBot: true,
+              type: 'text',
+            };
+            setMessages(prev => [...prev, noSignalsResponse]);
+          }
+        } catch (error) {
+          console.error('Error fetching signals:', error);
+          const errorResponse: Message = {
             id: Date.now().toString(),
-            text: "Here are the top 3 AI trading signals based on our latest analysis:",
+            text: "I'm unable to fetch AI trading signals right now. Please try again later or ask me about trading concepts instead!",
             isBot: true,
             type: 'text',
           };
-          setMessages(prev => [...prev, textResponse]);
-
-          // Then show each signal
-          MOCK_AI_SIGNALS.forEach((signal, index) => {
-            setTimeout(() => {
-              const signalMessage: Message = {
-                id: `${Date.now()}-signal-${index}`,
-                signal: signal,
-                isBot: true,
-                type: 'signal',
-              };
-              setMessages(prev => [...prev, signalMessage]);
-            }, (index + 1) * 500);
-          });
-        }, 800);
+          setMessages(prev => [...prev, errorResponse]);
+        } finally {
+          setIsLoading(false);
+        }
       } else {
         // Try to use external chatbot service first, fallback to mock response
         try {
@@ -583,7 +701,8 @@ export default function AIChatScreen() {
             showsVerticalScrollIndicator={false}
           >
             {messages.map((message) => {
-              const botBgColor = theme.mode === 'dark' ? theme.surface : '#E5E7EB';
+              // Always use theme.surface for bot messages to ensure proper theme support
+              const botBgColor = theme.surface;
               
               // Handle signal messages differently
               if (message.type === 'signal' && message.signal) {
@@ -615,14 +734,20 @@ export default function AIChatScreen() {
                       borderWidth: message.isBot ? 1 : 0,
                       borderColor: message.isBot ? theme.border : 'transparent',
                     }}
-                    padding="sm"
+                    padding="md"
                   >
-                    <Text 
-                      variant="body" 
-                      color={message.isBot ? theme.text : '#FFFFFF'}
-                    >
-                      {message.text}
-                    </Text>
+                    {message.isBot ? (
+                      <MarkdownText color={theme.text}>
+                        {message.text || ''}
+                      </MarkdownText>
+                    ) : (
+                      <Text 
+                        variant="body" 
+                        color="#FFFFFF"
+                      >
+                        {message.text}
+                      </Text>
+                    )}
                   </Card>
                   {!message.isBot && (
                     <View style={[styles.avatarCircle, { backgroundColor: theme.accent + '20' }]}>
@@ -737,7 +862,8 @@ export default function AIChatScreen() {
             showsVerticalScrollIndicator={false}
           >
             {messages.map((message) => {
-              const botBgColor = theme.mode === 'dark' ? theme.surface : '#E5E7EB';
+              // Always use theme.surface for bot messages to ensure proper theme support
+              const botBgColor = theme.surface;
               
               // Handle signal messages differently
               if (message.type === 'signal' && message.signal) {
@@ -769,14 +895,20 @@ export default function AIChatScreen() {
                       borderWidth: message.isBot ? 1 : 0,
                       borderColor: message.isBot ? theme.border : 'transparent',
                     }}
-                    padding="sm"
+                    padding="md"
                   >
-                    <Text 
-                      variant="body" 
-                      color={message.isBot ? theme.text : '#FFFFFF'}
-                    >
-                      {message.text}
-                    </Text>
+                    {message.isBot ? (
+                      <MarkdownText color={theme.text}>
+                        {message.text || ''}
+                      </MarkdownText>
+                    ) : (
+                      <Text 
+                        variant="body" 
+                        color="#FFFFFF"
+                      >
+                        {message.text}
+                      </Text>
+                    )}
                   </Card>
                   {!message.isBot && (
                     <View style={[styles.avatarCircle, { backgroundColor: theme.accent + '20' }]}>

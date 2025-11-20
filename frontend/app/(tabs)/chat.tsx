@@ -27,8 +27,8 @@ const getCurrentUser = (userData?: any) => ({
 export default function LeaderboardScreen() {
   const router = useRouter();
   const { theme } = useTheme();
-  const { user } = useUser();
-  const { globalLeaderboard, userRank, isLoading, refreshLeaderboard } = useLeaderboard();
+  const { user, userRank: userContextRank } = useUser();
+  const { globalLeaderboard, userRank: leaderboardRank, isLoading, refreshLeaderboard } = useLeaderboard();
   
   const [refreshing, setRefreshing] = React.useState(false);
   
@@ -38,8 +38,9 @@ export default function LeaderboardScreen() {
     setRefreshing(false);
   };
   
-  const currentUser = userRank || {
-    rank: user?.rank || 0,
+  // Use leaderboard rank if available, otherwise fall back to UserContext rank, then user.rank
+  const currentUser = leaderboardRank || {
+    rank: userContextRank || user?.rank || 0,
     xp: user?.xp_points || 0,
     winRate: 0,
     totalTrades: 0,
@@ -64,27 +65,27 @@ export default function LeaderboardScreen() {
         }
       >
         {/* User Rank Card */}
-        {userRank && (
-          <Card style={[styles.infoCard, { borderColor: theme.accent, borderWidth: 2 }]} elevation="med">
+        {(leaderboardRank || userContextRank || user?.rank) && (
+          <Card style={[styles.infoCard, { borderColor: theme.primary, borderWidth: 1 }]} elevation="med">
             <View style={styles.userRankHeader}>
               <UserAvatar user={user} size={56} />
               <View style={styles.userRankInfo}>
-                <Text variant="h2" weight="bold">#{userRank.rank || 'Unranked'}</Text>
-                <Text variant="body" muted>{userRank.displayName || user?.displayName || 'You'}</Text>
+                <Text variant="h2" weight="bold">#{leaderboardRank?.rank || userContextRank || user?.rank || 'Unranked'}</Text>
+                <Text variant="body" muted>{leaderboardRank?.displayName || user?.displayName || 'You'}</Text>
               </View>
             </View>
             <View style={styles.userStats}>
               <View style={styles.statItem}>
                 <Icon name="trophy" size={20} color={theme.yellow} />
-                <Text variant="body" weight="semibold">{userRank.xpPoints || 0} XP</Text>
+                <Text variant="body" weight="semibold">{leaderboardRank?.xpPoints || user?.xp_points || 0} XP</Text>
               </View>
               <View style={styles.statItem}>
                 <Icon name="trending-up" size={20} color={theme.primary} />
-                <Text variant="body" weight="semibold">{userRank.winRate || 0}% Win Rate</Text>
+                <Text variant="body" weight="semibold">{leaderboardRank?.winRate || user?.win_rate || 0}% Win Rate</Text>
               </View>
               <View style={styles.statItem}>
                 <Icon name="execute" size={20} color={theme.accent} />
-                <Text variant="body" weight="semibold">{userRank.totalTrades || 0} Trades</Text>
+                <Text variant="body" weight="semibold">{leaderboardRank?.totalTrades || user?.total_trades || 0} Trades</Text>
               </View>
             </View>
             <Button 
@@ -121,7 +122,7 @@ export default function LeaderboardScreen() {
                   key={entry.userId} 
                   style={[
                     styles.leaderCard,
-                    isCurrentUser && { borderColor: theme.accent, borderWidth: 2, backgroundColor: theme.accent + '10' }
+                    isCurrentUser && { borderColor: theme.primary, borderWidth: 2, backgroundColor: theme.primary + '10' }
                   ]}
                 >
                   <View style={styles.leaderRow}>

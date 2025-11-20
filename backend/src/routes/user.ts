@@ -4,9 +4,10 @@
  */
 
 import express from 'express';
-import { executeQuery, executeProcedure } from '../config/db';
+import { executeQuery, executeProcedure, isMockMode } from '../config/db';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { successResponse, errorResponse } from '../utils/responses';
+import mockDatabase from '../config/mock-database';
 
 const router = express.Router();
 
@@ -16,7 +17,52 @@ const router = express.Router();
  */
 router.get('/profile', authenticateToken, async (req: AuthRequest, res) => {
   try {
-    const userId = req.userId!;
+    const userId = req.userId;
+
+    if (!userId || typeof userId !== 'number') {
+      console.error('Profile request with invalid userId:', {
+        userId,
+        userIdType: typeof userId,
+        hasUserId: 'userId' in req,
+        authHeader: req.headers['authorization'] ? 'present' : 'missing'
+      });
+      return errorResponse(res, `User ID not found in token (received: ${userId})`, 401);
+    }
+
+    // Handle mock mode - return actual user data from mock database
+    if (isMockMode()) {
+      const mockUser = await mockDatabase.getUserById(userId);
+      
+      if (!mockUser) {
+        console.warn(`User not found in mock database: userId=${userId}`);
+        return errorResponse(res, `User not found (ID: ${userId})`, 404);
+      }
+
+      const mockProfile = {
+        user_id: mockUser.UserID,
+        username: mockUser.Username,
+        email: mockUser.Email,
+        firstName: mockUser.FirstName || null,
+        lastName: mockUser.LastName || null,
+        full_name: mockUser.FirstName && mockUser.LastName
+          ? `${mockUser.FirstName} ${mockUser.LastName}`.trim()
+          : mockUser.DisplayName || mockUser.Username,
+        displayName: mockUser.DisplayName || mockUser.Username,
+        tier_level: mockUser.Tier || 'Bronze',
+        xp_points: mockUser.TotalXP || 0,
+        current_level: mockUser.CurrentLevel || 1,
+        total_coins: 0,
+        win_rate: 0,
+        total_trades: 0,
+        current_streak: 0,
+        avatar_url: null,
+        avatar_type: 'mascot',
+        avatar_variant: 'excited',
+        bio: null,
+        total_balance: 100000
+      };
+      return successResponse(res, mockProfile);
+    }
 
     const query = `
       SELECT 
@@ -47,7 +93,8 @@ router.get('/profile', authenticateToken, async (req: AuthRequest, res) => {
     const result = await executeQuery(query, { userId });
 
     if (result.recordset.length === 0) {
-      return errorResponse(res, 'User not found', 404);
+      console.warn(`User not found in database: userId=${userId}`);
+      return errorResponse(res, `User not found (ID: ${userId})`, 404);
     }
 
     return successResponse(res, result.recordset[0]);
@@ -324,7 +371,7 @@ router.post('/achievements/unlock', authenticateToken, async (req: AuthRequest, 
       return errorResponse(res, 'Achievement not found', 404);
     }
 
-    const achievement = achievementResult.recordset[0];
+    const achievement = achievementResult.recordset[0] as { XPReward?: number; CoinReward?: number; [key: string]: any };
 
     // Unlock achievement
     await executeQuery(
@@ -333,14 +380,14 @@ router.post('/achievements/unlock', authenticateToken, async (req: AuthRequest, 
     );
 
     // Award XP and coins if specified
-    if (achievement.XPReward > 0) {
+    if (achievement.XPReward && achievement.XPReward > 0) {
       await executeProcedure('sp_UpdateUserXP', {
         UserID: userId,
         XPToAdd: achievement.XPReward,
       });
     }
 
-    if (achievement.CoinReward > 0) {
+    if (achievement.CoinReward && achievement.CoinReward > 0) {
       await executeProcedure('sp_UpdateUserCoins', {
         UserID: userId,
         CoinsToAdd: achievement.CoinReward,
@@ -402,13 +449,20 @@ router.post('/quest/:questId/complete', authenticateToken, async (req: AuthReque
       return errorResponse(res, 'Quest not found', 404);
     }
 
-    const quest = questResult.recordset[0];
+    const quest = questResult.recordset[0] as {
+      IsCompleted?: number;
+      CurrentProgress?: number;
+      TargetValue?: number;
+      XPReward?: number;
+      CoinReward?: number;
+      [key: string]: any;
+    };
 
     if (quest.IsCompleted) {
       return errorResponse(res, 'Quest already completed', 400);
     }
 
-    if (quest.CurrentProgress < quest.TargetValue) {
+    if ((quest.CurrentProgress || 0) < (quest.TargetValue || 0)) {
       return errorResponse(res, 'Quest not yet completed', 400);
     }
 
@@ -419,14 +473,14 @@ router.post('/quest/:questId/complete', authenticateToken, async (req: AuthReque
     );
 
     // Award XP and coins
-    if (quest.XPReward > 0) {
+    if (quest.XPReward && quest.XPReward > 0) {
       await executeProcedure('sp_UpdateUserXP', {
         UserID: userId,
         XPToAdd: quest.XPReward,
       });
     }
 
-    if (quest.CoinReward > 0) {
+    if (quest.CoinReward && quest.CoinReward > 0) {
       await executeProcedure('sp_UpdateUserCoins', {
         UserID: userId,
         CoinsToAdd: quest.CoinReward,
@@ -437,8 +491,8 @@ router.post('/quest/:questId/complete', authenticateToken, async (req: AuthReque
       quest,
       message: 'Quest completed successfully',
       rewards: {
-        xp: quest.XPReward,
-        coins: quest.CoinReward,
+        xp: quest.XPReward || 0,
+        coins: quest.CoinReward || 0,
       },
     });
   } catch (error) {
@@ -490,7 +544,7 @@ router.post('/complete-onboarding', authenticateToken, async (req: AuthRequest, 
     `;
     const checkResult = await executeQuery(checkQuery, { userId });
     
-    if (checkResult.recordset.length > 0 && checkResult.recordset[0].HasCompletedOnboarding === 1) {
+    if (checkResult.recordset.length > 0 && (checkResult.recordset[0] as { HasCompletedOnboarding?: number }).HasCompletedOnboarding === 1) {
       // Already completed - return current state
       const profileQuery = `
         SELECT 
@@ -736,10 +790,11 @@ router.post('/complete-lesson', authenticateToken, async (req: AuthRequest, res)
       CoinsToAdd: 100,
     });
 
+    const xpData = xpResult.recordset[0] as { TotalXP?: number; LevelUp?: boolean } | undefined;
     return successResponse(res, {
       xpAwarded: xpAwarded,
-      totalXP: xpResult.recordset[0]?.TotalXP || 0,
-      levelUp: xpResult.recordset[0]?.LevelUp || false,
+      totalXP: xpData?.TotalXP || 0,
+      levelUp: xpData?.LevelUp || false,
       streak: 0 // Placeholder - would track in LearningProgress table
     });
   } catch (error) {

@@ -7,6 +7,8 @@ export interface MockUser {
   Email: string;
   Username: string;
   PasswordHash: string;
+  FirstName?: string;
+  LastName?: string;
   IsActive: boolean;
   DisplayName: string;
   Tier: string;
@@ -37,6 +39,8 @@ export const mockDatabase = {
       Email: data.Email,
       Username: data.Username,
       PasswordHash: data.PasswordHash,
+      FirstName: data.FirstName,
+      LastName: data.LastName,
       IsActive: true,
       DisplayName: data.DisplayName || data.Username,
       Tier: 'Bronze',
@@ -44,7 +48,7 @@ export const mockDatabase = {
       CurrentLevel: 1,
     });
 
-    console.log(`✅ Mock DB: Created user ${data.Username} (ID: ${userId})`);
+    console.log(`✅ Mock DB: Created user ${data.Username} (ID: ${userId})${data.FirstName ? ` - ${data.FirstName} ${data.LastName || ''}`.trim() : ''}`);
     
     return { UserID: userId };
   },
@@ -57,6 +61,14 @@ export const mockDatabase = {
       (u) => u.Email === emailOrUsername || u.Username === emailOrUsername
     );
     
+    return user || null;
+  },
+
+  /**
+   * Get user by ID
+   */
+  getUserById: async (userId: number): Promise<MockUser | null> => {
+    const user = mockUsers.find((u) => u.UserID === userId);
     return user || null;
   },
 

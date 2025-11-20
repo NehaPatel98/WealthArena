@@ -149,3 +149,81 @@ class TestChatAPI:
             
             assert data["reply"] == "Context-aware response"
             assert "llm_client" in data["tools_used"]
+    
+    @pytest.mark.asyncio
+    async def test_chat_with_rag_context(self, async_client: AsyncClient):
+        """Test chat with RAG context retrieval"""
+        sample_chunks = [
+            {
+                'text': 'RSI is a momentum oscillator that measures price movements.',
+                'metadata': {'source_file': 'indicators.pdf', 'chunk_index': 0},
+                'score': 0.85
+            },
+            {
+                'text': 'RSI values above 70 indicate overbought conditions.',
+                'metadata': {'source_file': 'indicators.pdf', 'chunk_index': 1},
+                'score': 0.78
+            }
+        ]
+        
+        with patch('app.api.chat.llm_client') as mock_llm:
+            with patch('app.api.chat.rag_service') as mock_rag:
+                # Mock RAG service to return sample chunks
+                mock_rag.retrieve_context.return_value = sample_chunks
+                mock_rag.format_context_for_prompt.return_value = "[1] RSI is a momentum oscillator...\n(Source: indicators.pdf)"
+                
+                # Mock LLM to capture the messages passed to it
+                captured_messages = []
+                async def capture_messages(messages):
+                    captured_messages.extend(messages)
+                    return "RSI is a technical indicator used in trading analysis."
+                
+                mock_llm.chat = AsyncMock(side_effect=capture_messages)
+                
+                response = await async_client.post(
+                    "/v1/chat",
+                    json={
+                        "message": "What is RSI?",
+                        "user_id": "test_user"
+                    }
+                )
+                
+                assert response.status_code == 200
+                data = response.json()
+                
+                # Verify RAG was used
+                assert "rag_retrieval" in data["tools_used"]
+                assert "llm_client" in data["tools_used"]
+                
+                # Verify RAG context was passed to LLM
+                assert len(captured_messages) > 0
+                # Check that RAG context appears in system messages
+                system_messages = [msg for msg in captured_messages if msg.get("role") == "system"]
+                assert any("knowledge base" in msg.get("content", "").lower() for msg in system_messages)
+    
+    @pytest.mark.asyncio
+    async def test_chat_without_rag_fallback(self, async_client: AsyncClient):
+        """Test chat gracefully handles RAG service unavailability"""
+        with patch('app.api.chat.llm_client') as mock_llm:
+            with patch('app.api.chat.rag_service') as mock_rag:
+                # Mock RAG service to raise an exception
+                mock_rag.retrieve_context.side_effect = Exception("RAG service unavailable")
+                
+                mock_llm.chat = AsyncMock(return_value="Standard response without RAG")
+                
+                response = await async_client.post(
+                    "/v1/chat",
+                    json={
+                        "message": "Explain trading",
+                        "user_id": "test_user"
+                    }
+                )
+                
+                assert response.status_code == 200
+                data = response.json()
+                
+                # Should still work without RAG
+                assert data["reply"] == "Standard response without RAG"
+                assert "llm_client" in data["tools_used"]
+                # RAG should not be in tools_used if it failed
+                assert "rag_retrieval" not in data["tools_used"]

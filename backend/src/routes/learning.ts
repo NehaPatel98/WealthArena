@@ -10,6 +10,46 @@ import { successResponse, errorResponse } from '../utils/responses';
 
 const router = express.Router();
 
+// Type definitions for learning results
+interface LessonRecord {
+  LessonID: number;
+  TopicID: number;
+  XPReward: number;
+  CoinReward: number;
+  Title?: string;
+  TopicTitle?: string;
+  Content?: string;
+  Duration?: number;
+}
+
+interface ProgressRecord {
+  IsCompleted?: boolean;
+  CompletedAt?: Date;
+  ProgressPercentage?: number;
+  LastAccessedAt?: Date;
+  TotalTopics?: number;
+  CompletedTopics?: number;
+  TotalLessons?: number;
+  CompletedLessons?: number;
+}
+
+interface UserProfileRecord {
+  Tier?: string;
+  TotalXP?: number;
+}
+
+interface TopicRecord {
+  TopicID: number;
+  XPReward: number;
+  CoinReward: number;
+  Title?: string;
+}
+
+interface CountResult {
+  CompletedCount?: number;
+  TotalCount?: number;
+}
+
 /**
  * GET /api/learning/topics
  * Get all learning topics with user progress
@@ -131,7 +171,7 @@ router.post('/complete-lesson', authenticateToken, async (req: AuthRequest, res)
       return errorResponse(res, 'Lesson not found', 404);
     }
 
-    const lesson = lessonResult.recordset[0];
+    const lesson = lessonResult.recordset[0] as LessonRecord;
 
     // Check if already completed
     const existingProgress = await executeQuery(
@@ -211,7 +251,7 @@ router.post('/complete-topic', authenticateToken, async (req: AuthRequest, res) 
       return errorResponse(res, 'Topic not found', 404);
     }
 
-    const topic = topicResult.recordset[0];
+    const topicRecord = topicResult.recordset[0] as TopicRecord;
 
     // Check if all lessons are completed
     const completedLessonsQuery = `
@@ -232,8 +272,8 @@ router.post('/complete-topic', authenticateToken, async (req: AuthRequest, res) 
       executeQuery(totalLessonsQuery, { topicId }),
     ]);
 
-    const completedCount = completedResult.recordset[0].CompletedCount;
-    const totalCount = totalResult.recordset[0].TotalCount;
+    const completedCount = (completedResult.recordset[0] as CountResult).CompletedCount || 0;
+    const totalCount = (totalResult.recordset[0] as CountResult).TotalCount || 0;
 
     if (completedCount < totalCount) {
       return errorResponse(res, 'All lessons must be completed before completing the topic', 400);
@@ -245,22 +285,22 @@ router.post('/complete-topic', authenticateToken, async (req: AuthRequest, res) 
       { userId, topicId }
     );
 
-    if (existingProgress.recordset.length > 0 && existingProgress.recordset[0].IsCompleted) {
+    if (existingProgress.recordset.length > 0 && (existingProgress.recordset[0] as { IsCompleted: boolean }).IsCompleted) {
       return errorResponse(res, 'Topic already completed', 400);
     }
 
     // Award topic completion bonus
-    if (topic.XPReward > 0) {
+    if (topicRecord.XPReward > 0) {
       await executeProcedure('sp_UpdateUserXP', {
         UserID: userId,
-        XPToAdd: topic.XPReward,
+        XPToAdd: topicRecord.XPReward,
       });
     }
 
-    if (topic.CoinReward > 0) {
+    if (topicRecord.CoinReward > 0) {
       await executeProcedure('sp_UpdateUserCoins', {
         UserID: userId,
-        CoinsToAdd: topic.CoinReward,
+        CoinsToAdd: topicRecord.CoinReward,
       });
     }
 
@@ -286,12 +326,12 @@ router.post('/complete-topic', authenticateToken, async (req: AuthRequest, res) 
     return successResponse(res, {
       message: 'Topic completed successfully',
       rewards: {
-        xp: topic.XPReward,
-        coins: topic.CoinReward,
+        xp: topicRecord.XPReward,
+        coins: topicRecord.CoinReward,
       },
       topic: {
-        id: topic.TopicID,
-        title: topic.Title,
+        id: topicRecord.TopicID,
+        title: topicRecord.Title,
       },
     });
   } catch (error) {
@@ -323,19 +363,27 @@ router.get('/progress', authenticateToken, async (req: AuthRequest, res) => {
     `;
 
     const result = await executeQuery(query, { userId });
-    const progress = result.recordset[0];
+    const progress = result.recordset[0] as ProgressRecord;
 
     // Calculate completion percentage
-    const topicCompletionRate = progress.TotalTopics > 0 
-      ? Math.round((progress.CompletedTopics / progress.TotalTopics) * 100) 
+    const totalTopics = progress.TotalTopics || 0;
+    const completedTopics = progress.CompletedTopics || 0;
+    const totalLessons = progress.TotalLessons || 0;
+    const completedLessons = progress.CompletedLessons || 0;
+    
+    const topicCompletionRate = totalTopics > 0 
+      ? Math.round((completedTopics / totalTopics) * 100) 
       : 0;
     
-    const lessonCompletionRate = progress.TotalLessons > 0 
-      ? Math.round((progress.CompletedLessons / progress.TotalLessons) * 100) 
+    const lessonCompletionRate = totalLessons > 0 
+      ? Math.round((completedLessons / totalLessons) * 100) 
       : 0;
 
     return successResponse(res, {
-      ...progress,
+      totalTopics,
+      completedTopics,
+      totalLessons,
+      completedLessons,
       topicCompletionRate,
       lessonCompletionRate,
     });
@@ -369,7 +417,7 @@ router.get('/recommendations', authenticateToken, async (req: AuthRequest, res) 
     `;
 
     const userResult = await executeQuery(userQuery, { userId });
-    const userProfile = userResult.recordset[0];
+    const userProfile = userResult.recordset[0] as UserProfileRecord;
 
     // Get recommended topics based on user profile
     let recommendationsQuery = `

@@ -50,15 +50,26 @@ export default function UserProfileScreen() {
 
     setIsSaving(true);
     try {
-      const res = await updateUserProfile({
+      // Build profile update payload - preserve avatar if it was changed
+      const profileData: any = {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         username: username.trim(),
         bio: bio.trim() || undefined,
-        avatar_type: user?.avatar_type,
-        avatar_variant: user?.avatar_variant,
-        avatarUrl: user?.avatar_url,
-      });
+      };
+      
+      // Only include avatar fields if they exist (preserve current avatar if not changed)
+      if (user?.avatar_type) {
+        profileData.avatar_type = user.avatar_type;
+      }
+      if (user?.avatar_variant) {
+        profileData.avatar_variant = user.avatar_variant;
+      }
+      if (user?.avatar_url) {
+        profileData.avatarUrl = user.avatar_url;
+      }
+      
+      const res = await updateUserProfile(profileData);
 
       if (!res.success || !res.data) {
         Alert.alert('Error', res.message || 'Failed to update profile. Please try again.');

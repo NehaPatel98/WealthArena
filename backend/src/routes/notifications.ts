@@ -16,7 +16,15 @@ const router = express.Router();
  */
 router.get('/', authenticateToken, async (req: AuthRequest, res) => {
   try {
-    const userId = req.userId!;
+    const userId = req.userId;
+    
+    if (!userId || typeof userId !== 'number') {
+      console.error('Notifications request with invalid userId:', {
+        userId,
+        userIdType: typeof userId
+      });
+      return errorResponse(res, `User ID not found in token (received: ${userId})`, 401);
+    }
     const { 
       status = 'all', 
       type, 
@@ -86,7 +94,15 @@ router.get('/', authenticateToken, async (req: AuthRequest, res) => {
  */
 router.get('/unread-count', authenticateToken, async (req: AuthRequest, res) => {
   try {
-    const userId = req.userId!;
+    const userId = req.userId;
+    
+    if (!userId || typeof userId !== 'number') {
+      console.error('Unread-count request with invalid userId:', {
+        userId,
+        userIdType: typeof userId
+      });
+      return errorResponse(res, `User ID not found in token (received: ${userId})`, 401);
+    }
 
     const query = `
       SELECT COUNT(*) as UnreadCount
@@ -96,8 +112,9 @@ router.get('/unread-count', authenticateToken, async (req: AuthRequest, res) => 
 
     const result = await executeQuery(query, { userId });
 
+    const unreadData = result.recordset[0] as { UnreadCount?: number } | undefined;
     return successResponse(res, {
-      unreadCount: result.recordset[0].UnreadCount
+      unreadCount: unreadData?.UnreadCount || 0
     });
   } catch (error) {
     return errorResponse(res, 'Failed to fetch unread count', 500, error);
@@ -317,7 +334,17 @@ router.get('/preferences', authenticateToken, async (req: AuthRequest, res) => {
       });
     }
 
-    const preferences = result.recordset[0];
+    const preferences = result.recordset[0] as {
+      EmailNotifications?: number;
+      PushNotifications?: number;
+      SMSNotifications?: number;
+      TradingAlerts?: number;
+      NewsAlerts?: number;
+      SocialAlerts?: number;
+      SystemAlerts?: number;
+      CreatedAt?: string;
+      UpdatedAt?: string;
+    };
     return successResponse(res, {
       emailNotifications: preferences.EmailNotifications === 1,
       pushNotifications: preferences.PushNotifications === 1,
@@ -358,7 +385,8 @@ router.post('/send', authenticateToken, async (req: AuthRequest, res) => {
 
     const adminResult = await executeQuery(adminQuery, { userId });
 
-    if (adminResult.recordset.length === 0 || adminResult.recordset[0].Tier !== 'admin') {
+    const adminData = adminResult.recordset[0] as { Tier?: string } | undefined;
+    if (adminResult.recordset.length === 0 || adminData?.Tier !== 'admin') {
       return errorResponse(res, 'Unauthorized to send notifications', 403);
     }
 

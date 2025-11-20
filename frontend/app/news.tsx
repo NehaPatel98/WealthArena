@@ -48,8 +48,11 @@ export default function NewsScreen() {
         timestamp: article.publishedAt,
       }));
 
-      // Map trending market data
-      const marketMapped: UnifiedNewsArticle[] = ((trendingData?.articles || trendingData || []) as any[]).map((item: any, index: number) => ({
+      // Map trending market data - add proper type checking
+      const trendingArticles = Array.isArray(trendingData?.articles) 
+        ? trendingData.articles 
+        : (Array.isArray(trendingData) ? trendingData : []);
+      const marketMapped: UnifiedNewsArticle[] = trendingArticles.map((item: any, index: number) => ({
         id: `market-${item.id || index}`,
         title: item.title || item.headline || 'Market Update',
         summary: item.summary || item.description || '',
@@ -64,8 +67,11 @@ export default function NewsScreen() {
         timestamp: item.timestamp || item.createdAt || new Date().toISOString(),
       }));
 
-      // Map AI search results
-      const aiMapped: UnifiedNewsArticle[] = ((searchResults?.results || searchResults || []) as any[]).map((item: any, index: number) => ({
+      // Map AI search results - add proper type checking
+      const searchArticles = Array.isArray(searchResults?.results) 
+        ? searchResults.results 
+        : (Array.isArray(searchResults) ? searchResults : []);
+      const aiMapped: UnifiedNewsArticle[] = searchArticles.map((item: any, index: number) => ({
         id: `ai-${item.id || index}`,
         title: item.title || item.headline || 'AI Insight',
         summary: item.summary || item.description || '',
@@ -82,12 +88,14 @@ export default function NewsScreen() {
 
       // Combine and sort by timestamp
       const unifiedNews = [...rssMapped, ...marketMapped, ...aiMapped]
+        .filter(article => article.title && article.title.trim() !== '') // Filter out empty articles
         .sort((a, b) => {
-          const timeA = new Date(a.timestamp || a.publishedAt).getTime();
-          const timeB = new Date(b.timestamp || b.publishedAt).getTime();
+          const timeA = new Date(a.timestamp || a.publishedAt || 0).getTime();
+          const timeB = new Date(b.timestamp || b.publishedAt || 0).getTime();
           return timeB - timeA; // Descending (newest first)
         });
 
+      console.log(`[News] Loaded ${unifiedNews.length} articles (RSS: ${rssMapped.length}, Market: ${marketMapped.length}, AI: ${aiMapped.length})`);
       setNews(unifiedNews);
     } catch (error) {
       console.error('Failed to fetch news:', error);
@@ -265,14 +273,17 @@ export default function NewsScreen() {
         )}
 
         {/* Empty State */}
-        {!isLoading && news.length === 0 && (
+        {!isLoading && news.filter(article => sourceFilter === 'all' || article.source_type === sourceFilter).length === 0 && (
           <View style={styles.emptyContainer}>
             <Icon name="newspaper" size={48} color={theme.muted} />
             <Text variant="h4" weight="semibold" style={styles.emptyTitle}>
-              No News Available
+              {news.length === 0 ? 'No News Available' : `No ${sourceFilter === 'all' ? '' : sourceFilter.toUpperCase() + ' '}News Available`}
             </Text>
             <Text variant="body" muted style={styles.emptyDescription}>
-              Check back later for the latest market news and updates.
+              {news.length === 0 
+                ? 'Check back later for the latest market news and updates.'
+                : `Try selecting a different source filter or check back later.`
+              }
             </Text>
             <Button 
               variant="secondary" 
@@ -282,6 +293,16 @@ export default function NewsScreen() {
             >
               Try Again
             </Button>
+            {news.length > 0 && (
+              <Button 
+                variant="ghost" 
+                size="medium" 
+                onPress={() => setSourceFilter('all')}
+                style={styles.retryButton}
+              >
+                Show All News
+              </Button>
+            )}
           </View>
         )}
 

@@ -28,8 +28,20 @@ except ImportError:
 env_path = Path(__file__).parent.parent / '.env'
 load_dotenv(env_path)
 
+# Normalize DB_TYPE to canonical values
+# Accepts: 'postgres', 'postgresql', 'pg' -> maps to 'postgres'
+# Everything else -> maps to 'sqlserver'
+def normalize_db_type(db_type: Optional[str]) -> str:
+    """Normalize database type to canonical value."""
+    if not db_type:
+        return 'sqlserver'
+    normalized = db_type.lower().strip()
+    if normalized in ('postgres', 'postgresql', 'pg'):
+        return 'postgres'
+    return 'sqlserver'
+
 # Determine database type
-DB_TYPE = os.getenv('DB_TYPE', 'sqlserver').lower()
+DB_TYPE = normalize_db_type(os.getenv('DB_TYPE', 'sqlserver'))
 
 # Conditional imports
 if DB_TYPE == 'postgres':

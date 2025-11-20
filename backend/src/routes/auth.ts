@@ -11,6 +11,29 @@ import { successResponse, errorResponse, badRequestResponse } from '../utils/res
 
 const router = express.Router();
 
+// Type definitions for database results
+interface UserRecord {
+  UserID: number;
+  Email: string;
+  Username: string;
+  PasswordHash?: string;
+  IsActive: boolean;
+  DisplayName?: string;
+  Tier?: string;
+  TotalXP?: number;
+  CurrentLevel?: number;
+  AvatarURL?: string;
+  AvatarType?: string;
+  AvatarVariant?: string;
+}
+
+interface ProfileRecord {
+  DisplayName?: string;
+  Tier: string;
+  TotalXP: number;
+  CurrentLevel?: number;
+}
+
 /**
  * POST /api/auth/signup
  * Create new user account
@@ -57,7 +80,7 @@ router.post('/signup', async (req, res) => {
       DisplayName: displayName || username,
     });
 
-    const userId = result.recordset[0].UserID;
+    const userId = (result.recordset[0] as UserRecord).UserID;
 
     // Get user profile data
     const userProfile = await executeQuery(
@@ -66,7 +89,7 @@ router.post('/signup', async (req, res) => {
       { userId }
     );
 
-    const profile = userProfile.recordset[0];
+    const profile = userProfile.recordset[0] as ProfileRecord;
 
     // Generate token
     const token = generateToken(userId, email);
@@ -137,7 +160,7 @@ router.post('/google', async (req, res) => {
 
       if (existingUser.recordset.length > 0) {
         // User exists, update last login
-        user = existingUser.recordset[0];
+        user = existingUser.recordset[0] as UserRecord;
         userId = user.UserID;
 
         await executeQuery(
@@ -171,7 +194,7 @@ router.post('/google', async (req, res) => {
           DisplayName: name || username,
         });
 
-        userId = result.recordset[0].UserID;
+        userId = (result.recordset[0] as UserRecord).UserID;
 
         // Update avatar and type
         if (picture) {
@@ -191,7 +214,7 @@ router.post('/google', async (req, res) => {
           { userId }
         );
 
-        user = newUserQuery.recordset[0];
+        user = newUserQuery.recordset[0] as UserRecord;
       }
 
       // Generate token
@@ -248,13 +271,16 @@ router.post('/login', async (req, res) => {
       return errorResponse(res, 'Invalid credentials', 401);
     }
 
-    const user = result.recordset[0];
+    const user = result.recordset[0] as UserRecord;
 
     if (!user.IsActive) {
       return errorResponse(res, 'Account is inactive', 401);
     }
 
     // Verify password
+    if (!user.PasswordHash) {
+      return errorResponse(res, 'Invalid credentials', 401);
+    }
     const isValidPassword = await bcrypt.compare(password, user.PasswordHash);
 
     if (!isValidPassword) {

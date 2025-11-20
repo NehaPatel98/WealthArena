@@ -10,24 +10,76 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme, Text, Card, Button, Badge, FAB as Fab, tokens } from '@/src/design-system';
 import { SimulationProvider, useSimulation } from '@/contexts/SimulationContext';
-import { TRADING_SYMBOLS, getHistoricalData } from '@/data/historicalData';
+import { getHistoricalData } from '@/data/historicalData';
 import { PlaybackControls } from '@/components/trade/PlaybackControls';
 import { TradeLogPanel } from '@/components/trade/TradeLogPanel';
 import { TradeActions } from '@/components/trade/TradeActions';
 import { DurationSlider } from '@/components/trade/DurationSlider';
 import CandlestickChart from '@/components/CandlestickChart';
 import { ResultModal } from '@/components/trade/ResultModal';
+import { marketDataService } from '@/services/marketDataService';
+
+interface TradingSymbol {
+  symbol: string;
+  name: string;
+  basePrice: number;
+  volatility: number;
+}
 
 function TradeSimulatorContent() {
   const router = useRouter();
   const { theme } = useTheme();
   const simulation = useSimulation();
 
-  const [selectedSymbols, setSelectedSymbols] = useState<typeof TRADING_SYMBOLS>([TRADING_SYMBOLS[0]]);
-  const [currentSymbol, setCurrentSymbol] = useState(TRADING_SYMBOLS[0]);
+  const [availableSymbols, setAvailableSymbols] = useState<TradingSymbol[]>([]);
+  const [isLoadingSymbols, setIsLoadingSymbols] = useState(true);
+  const [selectedSymbols, setSelectedSymbols] = useState<TradingSymbol[]>([]);
+  const [currentSymbol, setCurrentSymbol] = useState<TradingSymbol | null>(null);
   const [duration, setDuration] = useState(30);
   const [isSetupMode, setIsSetupMode] = useState(true);
   const [showResults, setShowResults] = useState(false);
+
+  // Load real symbols from backend
+  useEffect(() => {
+    const loadSymbols = async () => {
+      setIsLoadingSymbols(true);
+      try {
+        console.log('Loading trading symbols from backend...');
+        const symbols = await marketDataService.getAvailableSymbols();
+        
+        if (symbols && symbols.length > 0) {
+          // Convert to TradingSymbol format with default prices
+          const tradingSymbols: TradingSymbol[] = symbols.slice(0, 20).map((symbol) => {
+            // Get base price from market data if available
+            const basePrice = 100; // Default, will be updated when data is fetched
+            const volatility = symbol.includes('=') || symbol.includes('-USD') ? 0.03 : 0.02;
+            
+            return {
+              symbol,
+              name: symbol,
+              basePrice,
+              volatility
+            };
+          });
+          
+          setAvailableSymbols(tradingSymbols);
+          if (tradingSymbols.length > 0) {
+            setSelectedSymbols([tradingSymbols[0]]);
+            setCurrentSymbol(tradingSymbols[0]);
+          }
+          console.log(`✓ Loaded ${tradingSymbols.length} real symbols for trade simulator`);
+        } else {
+          console.warn('No symbols available from backend');
+        }
+      } catch (error) {
+        console.error('Error loading symbols for trade simulator:', error);
+      } finally {
+        setIsLoadingSymbols(false);
+      }
+    };
+    
+    loadSymbols();
+  }, []);
 
   // Safely compute previous close for change badge without optional chaining pitfalls
   const previousTwoCandles = simulation.engine?.getVisibleCandles(2) ?? [];
@@ -40,21 +92,66 @@ function TradeSimulatorContent() {
     }
   }, [simulation.playbackState, isSetupMode]);
 
-  const handleStartSimulation = () => {
-    // Generate historical data for the first symbol
-    const candles = getHistoricalData(currentSymbol.symbol, duration);
+  const handleStartSimulation = async () => {
+    if (!currentSymbol) {
+      Alert.alert('Error', 'Please select a symbol first');
+      return;
+    }
     
-    // Initialize simulation
-    simulation.initializeSimulation(candles, currentSymbol.symbol, duration);
-    
-    // Switch to trading mode
-    setIsSetupMode(false);
-    
-    // Auto-start playback
-    setTimeout(() => simulation.play(), 500);
+    try {
+      // Fetch real historical data from backend
+      const { resolveBackendURL } = await import('@/utils/networkConfig');
+      const { getAuthHeaders } = await import('@/services/apiService');
+      const backendUrl = await resolveBackendURL(3000);
+      
+      const response = await fetch(
+        `${backendUrl}/api/market-data/history/${currentSymbol.symbol}?period=${duration}d&days=${duration}`,
+        {
+          headers: await getAuthHeaders(),
+        }
+      );
+      
+      let candles: any[] = [];
+      
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success && result.data && result.data.length > 0) {
+          // Convert backend format to CandleData format
+          candles = result.data.map((candle: any) => {
+            const time = new Date(candle.time || candle.Date);
+            return {
+              timestamp: time.getTime(),
+              open: candle.open || candle.Open,
+              high: candle.high || candle.High,
+              low: candle.low || candle.Low,
+              close: candle.close || candle.Close,
+              volume: candle.volume || candle.Volume || 0
+            };
+          });
+        }
+      }
+      
+      // If no data from backend, fall back to generated data
+      if (candles.length === 0) {
+        console.warn(`No data for ${currentSymbol.symbol}, using generated data`);
+        candles = getHistoricalData(currentSymbol.symbol, duration);
+      }
+      
+      // Initialize simulation
+      simulation.initializeSimulation(candles, currentSymbol.symbol, duration);
+      
+      // Switch to trading mode
+      setIsSetupMode(false);
+      
+      // Auto-start playback
+      setTimeout(() => simulation.play(), 500);
+    } catch (error) {
+      console.error('Error starting simulation:', error);
+      Alert.alert('Error', 'Failed to load market data. Please try again.');
+    }
   };
 
-  const toggleSymbol = (symbol: typeof TRADING_SYMBOLS[0]) => {
+  const toggleSymbol = (symbol: TradingSymbol) => {
     const isSelected = selectedSymbols.some(s => s.symbol === symbol.symbol);
     if (isSelected) {
       if (selectedSymbols.length === 1) {
@@ -62,7 +159,7 @@ function TradeSimulatorContent() {
         return;
       }
       setSelectedSymbols(selectedSymbols.filter(s => s.symbol !== symbol.symbol));
-      if (currentSymbol.symbol === symbol.symbol) {
+      if (currentSymbol?.symbol === symbol.symbol) {
         setCurrentSymbol(selectedSymbols[0]);
       }
     } else {
@@ -140,45 +237,55 @@ function TradeSimulatorContent() {
               <Text variant="small" muted>
                 Choose one or more instruments to trade (tap to select/deselect)
               </Text>
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false}
-                style={styles.symbolScroll}
-                contentContainerStyle={styles.symbolContent}
-              >
-                {TRADING_SYMBOLS.map((symbol) => {
-                  const isSelected = selectedSymbols.some(s => s.symbol === symbol.symbol);
-                  return (
-                  <Pressable
-                    key={symbol.symbol}
-                      onPress={() => toggleSymbol(symbol)}
-              >
-                <Card
-                      style={StyleSheet.flatten([
-                        styles.symbolCard,
-                          isSelected && {
-                          borderColor: theme.primary,
-                          borderWidth: 2,
-                          backgroundColor: theme.primary + '10'
-                        }
-                      ])}
-                    >
-                        {isSelected && (
-                          <View style={{ position: 'absolute', top: 8, right: 8 }}>
-                            <Ionicons name="checkmark-circle" size={20} color={theme.primary} />
-                          </View>
-                        )}
-                      <Text variant="body" weight="bold">{symbol.symbol}</Text>
-                      <Text variant="xs" muted>{symbol.name}</Text>
-                      <Text variant="small" weight="semibold" color={theme.primary}>
-                        ${symbol.basePrice.toLocaleString()}
-                      </Text>
-                </Card>
-              </Pressable>
-                  );
-                })}
-          </ScrollView>
-        </Card>
+              {isLoadingSymbols ? (
+                <View style={{ padding: tokens.spacing.lg, alignItems: 'center' }}>
+                  <Text variant="body" muted>Loading symbols from database...</Text>
+                </View>
+              ) : availableSymbols.length === 0 ? (
+                <View style={{ padding: tokens.spacing.lg, alignItems: 'center' }}>
+                  <Text variant="body" muted>No symbols available. Please ensure backend has loaded market data.</Text>
+                </View>
+              ) : (
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.symbolScroll}
+                  contentContainerStyle={styles.symbolContent}
+                >
+                  {availableSymbols.map((symbol) => {
+                    const isSelected = selectedSymbols.some(s => s.symbol === symbol.symbol);
+                    return (
+                      <Pressable
+                        key={symbol.symbol}
+                        onPress={() => toggleSymbol(symbol)}
+                      >
+                        <Card
+                          style={StyleSheet.flatten([
+                            styles.symbolCard,
+                            isSelected && {
+                              borderColor: theme.primary,
+                              borderWidth: 2,
+                              backgroundColor: theme.primary + '10'
+                            }
+                          ])}
+                        >
+                          {isSelected && (
+                            <View style={{ position: 'absolute', top: 8, right: 8 }}>
+                              <Ionicons name="checkmark-circle" size={20} color={theme.primary} />
+                            </View>
+                          )}
+                          <Text variant="body" weight="bold">{symbol.symbol}</Text>
+                          <Text variant="xs" muted>{symbol.name}</Text>
+                          <Text variant="small" weight="semibold" color={theme.primary}>
+                            ${symbol.basePrice.toLocaleString()}
+                          </Text>
+                        </Card>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              )}
+            </Card>
 
             {/* Duration Selection */}
             <Card style={styles.sectionCard}>
@@ -230,7 +337,7 @@ function TradeSimulatorContent() {
                   Beginner Tip:
                 </Text>
                 <Text variant="xs" muted>
-                  Start with just one symbol (like SPY) and a short duration (5-10 minutes) to learn the basics!
+                  Start with just one symbol and a short duration (5-10 minutes) to learn the basics!
                 </Text>
               </View>
             </Card>
@@ -247,15 +354,52 @@ function TradeSimulatorContent() {
                     {selectedSymbols.map((symbol) => (
                       <Pressable
                         key={symbol.symbol}
-                        onPress={() => {
+                        onPress={async () => {
                           setCurrentSymbol(symbol);
-                          const candles = getHistoricalData(symbol.symbol, duration);
-                          simulation.initializeSimulation(candles, symbol.symbol, duration);
-                          simulation.play();
+                          try {
+                            const { resolveBackendURL } = await import('@/utils/networkConfig');
+                            const { getAuthHeaders } = await import('@/services/apiService');
+                            const backendUrl = await resolveBackendURL(3000);
+                            
+                            const response = await fetch(
+                              `${backendUrl}/api/market-data/history/${symbol.symbol}?period=${duration}d&days=${duration}`,
+                              { headers: await getAuthHeaders() }
+                            );
+                            
+                            let candles: any[] = [];
+                            if (response.ok) {
+                              const result = await response.json();
+                              if (result.success && result.data && result.data.length > 0) {
+                                candles = result.data.map((candle: any) => {
+                                  const time = new Date(candle.time || candle.Date);
+                                  return {
+                                    timestamp: time.getTime(),
+                                    open: candle.open || candle.Open,
+                                    high: candle.high || candle.High,
+                                    low: candle.low || candle.Low,
+                                    close: candle.close || candle.Close,
+                                    volume: candle.volume || candle.Volume || 0
+                                  };
+                                });
+                              }
+                            }
+                            
+                            if (candles.length === 0) {
+                              candles = getHistoricalData(symbol.symbol, duration);
+                            }
+                            
+                            simulation.initializeSimulation(candles, symbol.symbol, duration);
+                            simulation.play();
+                          } catch (error) {
+                            console.error('Error loading symbol data:', error);
+                            const candles = getHistoricalData(symbol.symbol, duration);
+                            simulation.initializeSimulation(candles, symbol.symbol, duration);
+                            simulation.play();
+                          }
                         }}
                       >
                         <Badge
-                          variant={currentSymbol.symbol === symbol.symbol ? 'primary' : 'secondary'}
+                          variant={currentSymbol?.symbol === symbol.symbol ? 'primary' : 'secondary'}
                           size="medium"
                         >
                           {symbol.symbol}

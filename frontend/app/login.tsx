@@ -8,6 +8,7 @@ import { makeRedirectUri } from 'expo-auth-session';
 import { useTheme, Text, Button, TextInput, Card, Icon, FoxMascot, tokens } from '@/src/design-system';
 import { login } from '@/services/apiService';
 import { useUser } from '@/contexts/UserContext';
+import { getNetworkInfo } from '@/config/apiConfig';
 
 // Complete OAuth session when browser redirects back
 WebBrowser.maybeCompleteAuthSession();
@@ -146,7 +147,19 @@ export default function LoginScreen() {
       const errorMessage = error instanceof Error ? error.message : 'Failed to login. Please try again.';
       // eslint-disable-next-line no-console
       console.error('Login error:', errorMessage);
-      Alert.alert('Error', errorMessage);
+      
+      // Get network info for debugging
+      const networkInfo = getNetworkInfo();
+      // eslint-disable-next-line no-console
+      console.error('Network info:', networkInfo);
+      
+      // Provide helpful error message
+      let userMessage = errorMessage;
+      if (errorMessage.includes('Network request failed') || errorMessage.includes('fetch')) {
+        userMessage = `Cannot connect to server. Please ensure:\n\n1. Backend is running on port 3000\n2. Your device and computer are on the same network\n3. Firewall allows connections on port 3000\n4. If using a physical device, check .env.local has EXPO_PUBLIC_BACKEND_URL set with your machine's IP\n\nAuto-detected IP: ${networkInfo.autoDetectedIP}`;
+      }
+      
+      Alert.alert('Error', userMessage);
     } finally {
       setIsLoading(false);
     }

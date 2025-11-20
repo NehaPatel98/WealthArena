@@ -68,7 +68,7 @@ router.get('/:signalId', authenticateToken, async (req, res) => {
       return errorResponse(res, 'Signal not found', 404);
     }
 
-    const signal = signalResult.recordset[0];
+    const signal = signalResult.recordset[0] as Record<string, any>;
     const takeProfitLevels = tpResult.recordset;
 
     return successResponse(res, {
@@ -162,7 +162,7 @@ router.get('/historical', authenticateToken, async (req, res) => {
     }
 
     const countResult = await executeQuery(countQuery, countParams);
-    const total = countResult.recordset[0]?.Total || 0;
+    const total = (countResult.recordset[0] as { Total?: number })?.Total || 0;
 
     return successResponse(res, {
       data: result.recordset,

@@ -314,31 +314,64 @@ export function GamificationProvider({ children }: Readonly<{ children: React.Re
     try {
       setIsLoading(true);
       
-      // Fetch achievements
-      const achievementsResponse = await fetch('/api/user/achievements', {
-        headers: {
-          'Authorization': `Bearer ${await AsyncStorage.getItem('authToken')}`,
-        },
-      });
+      // Use API_CONFIG to ensure correct URL resolution
+      const { API_CONFIG } = await import('@/config/apiConfig');
+      const backendUrl = API_CONFIG.BACKEND_BASE_URL;
       
-      if (achievementsResponse.ok) {
-        const achievementsData = await achievementsResponse.json();
-        setRecentAchievements(achievementsData.slice(0, 5));
+      // Fetch achievements
+      try {
+        const achievementsResponse = await fetch(`${backendUrl}/api/user/achievements`, {
+          headers: {
+            'Authorization': `Bearer ${await AsyncStorage.getItem('authToken')}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        if (achievementsResponse.ok) {
+          const contentType = achievementsResponse.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const achievementsData = await achievementsResponse.json();
+            if (Array.isArray(achievementsData)) {
+              setRecentAchievements(achievementsData.slice(0, 5));
+            } else if (achievementsData.data && Array.isArray(achievementsData.data)) {
+              setRecentAchievements(achievementsData.data.slice(0, 5));
+            }
+          } else {
+            console.warn('Achievements response is not JSON, skipping');
+          }
+        }
+      } catch (achievementsError) {
+        console.warn('Failed to fetch achievements:', achievementsError);
       }
       
       // Fetch quests
-      const questsResponse = await fetch('/api/user/quests', {
-        headers: {
-          'Authorization': `Bearer ${await AsyncStorage.getItem('authToken')}`,
-        },
-      });
-      
-      if (questsResponse.ok) {
-        const questsData = await questsResponse.json();
-        setActiveQuests(questsData);
+      try {
+        const questsResponse = await fetch(`${backendUrl}/api/user/quests`, {
+          headers: {
+            'Authorization': `Bearer ${await AsyncStorage.getItem('authToken')}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        if (questsResponse.ok) {
+          const contentType = questsResponse.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const questsData = await questsResponse.json();
+            if (Array.isArray(questsData)) {
+              setActiveQuests(questsData);
+            } else if (questsData.data && Array.isArray(questsData.data)) {
+              setActiveQuests(questsData.data);
+            }
+          } else {
+            console.warn('Quests response is not JSON, skipping');
+          }
+        }
+      } catch (questsError) {
+        console.warn('Failed to fetch quests:', questsError);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error refreshing gamification data:', error);
+      // Don't throw - just log the error so the app continues to work
     } finally {
       setIsLoading(false);
     }

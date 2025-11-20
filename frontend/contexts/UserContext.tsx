@@ -6,7 +6,7 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getUserProfile, setAuthToken } from '@/services/apiService';
+import { getUserProfile, setAuthToken, getUserRank } from '@/services/apiService';
 import { FoxVariant } from '@/src/design-system/mascots';
 
 export interface User {
@@ -29,16 +29,19 @@ export interface User {
   win_rate?: number;
   total_trades?: number;
   current_streak?: number;
+  rank?: number | null;
 }
 
 interface UserContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  userRank: number | null;
   login: (userData: User, token: string) => Promise<void>;
   logout: () => Promise<void>;
   updateUser: (updates: Partial<User>) => void;
   refreshUser: () => Promise<void>;
+  refreshUserRank: () => Promise<void>;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -47,6 +50,7 @@ export function UserProvider({ children }: Readonly<{ children: React.ReactNode 
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [userRank, setUserRank] = useState<number | null>(null);
 
   // Load user from storage on mount
   useEffect(() => {
@@ -113,9 +117,10 @@ export function UserProvider({ children }: Readonly<{ children: React.ReactNode 
       setAuthToken(token);
       setIsAuthenticated(true);
 
-      // Refresh user profile after login to get latest data
+      // Refresh user profile and rank after login to get latest data
       try {
         await refreshUser();
+        await refreshUserRank();
       } catch (error) {
         console.error('Failed to refresh user after login:', error);
         // Don't throw - login succeeded even if refresh fails
@@ -168,17 +173,49 @@ export function UserProvider({ children }: Readonly<{ children: React.ReactNode 
     }
   };
 
+  const refreshUserRank = async () => {
+    if (!user?.user_id) return;
+
+    try {
+      const res = await getUserRank(user.user_id);
+      if (res.success && res.data) {
+        const rank = res.data.rank || res.data.userRank || null;
+        setUserRank(rank);
+        
+        // Also update user object with rank
+        if (user && rank !== null) {
+          const updatedUser = { ...user, rank };
+          setUser(updatedUser);
+          await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
+        }
+      }
+    } catch (error) {
+      console.error('Failed to refresh user rank:', error);
+    }
+  };
+
+  // Fetch rank when user data is loaded
+  useEffect(() => {
+    if (user?.user_id && isAuthenticated) {
+      refreshUserRank().catch(error => {
+        console.error('Failed to fetch user rank:', error);
+      });
+    }
+  }, [user?.user_id, isAuthenticated]);
+
   const contextValue = useMemo(
     () => ({
       user,
       isLoading,
       isAuthenticated,
+      userRank,
       login,
       logout,
       updateUser,
       refreshUser,
+      refreshUserRank,
     }),
-    [user, isLoading, isAuthenticated]
+    [user, isLoading, isAuthenticated, userRank]
   );
 
   return (

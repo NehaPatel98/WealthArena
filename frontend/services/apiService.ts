@@ -10,7 +10,7 @@ const API_BASE_URL = API_CONFIG.BACKEND_BASE_URL;
 const CHATBOT_URL = API_CONFIG.CHATBOT_BASE_URL;
 
 // Helper function to get auth headers
-const getAuthHeaders = async () => {
+export const getAuthHeaders = async () => {
   const token = await AsyncStorage.getItem('authToken');
   return {
     'Content-Type': 'application/json',
@@ -18,11 +18,54 @@ const getAuthHeaders = async () => {
   };
 };
 
+// Helper function to create timeout controller
+const createTimeoutController = (timeoutMs: number = 30000): AbortController => {
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), timeoutMs);
+  return controller;
+};
+
+// Helper function to fetch with timeout
+const fetchWithTimeout = async (
+  url: string, 
+  options: RequestInit = {}, 
+  timeout: number = 30000
+): Promise<Response> => {
+  const controller = createTimeoutController(timeout);
+  const signal = controller.signal;
+  
+  try {
+    const response = await fetch(url, { ...options, signal });
+    return response;
+  } catch (error: any) {
+    if (error.name === 'AbortError') {
+      throw new Error(`Request timeout after ${timeout}ms: ${url}`);
+    }
+    throw error;
+  }
+};
+
 // Helper function to handle API responses
-const handleResponse = async (response: Response) => {
+const handleResponse = async (response: Response, endpoint?: string) => {
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+    const errorMessage = errorData.message || `HTTP ${response.status}: ${response.statusText}`;
+    const detailedMessage = endpoint 
+      ? `${errorMessage} (endpoint: ${endpoint})`
+      : errorMessage;
+    
+    // Provide specific error messages for common cases
+    if (response.status === 404) {
+      throw new Error(`Resource not found: ${detailedMessage}`);
+    } else if (response.status === 500) {
+      throw new Error(`Server error: ${detailedMessage}`);
+    } else if (response.status === 401) {
+      throw new Error(`Unauthorized: ${detailedMessage}`);
+    } else if (response.status === 403) {
+      throw new Error(`Forbidden: ${detailedMessage}`);
+    }
+    
+    throw new Error(detailedMessage);
   }
   return response.json();
 };
@@ -38,21 +81,59 @@ export const apiService = {
     displayName?: string;
     full_name?: string;
   }) {
-    const response = await fetch(`${API_BASE_URL}/api/auth/signup`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(userData)
-    });
-    return handleResponse(response);
+    // Force refresh IP detection for login/signup to ensure we have the latest IP
+    const { resolveBackendURL } = await import('../utils/networkConfig');
+    let backendUrl = await resolveBackendURL(3000, true); // forceRefresh = true
+    
+    try {
+      const response = await fetch(`${backendUrl}/api/auth/signup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(userData)
+      });
+      return handleResponse(response);
+    } catch (error: any) {
+      // If connection fails, try one more time with fresh detection
+      if (error.message?.includes('Network request failed') || error.message?.includes('Failed to fetch')) {
+        console.log('🔄 Signup failed, retrying with fresh IP detection...');
+        backendUrl = await resolveBackendURL(3000, true);
+        const retryResponse = await fetch(`${backendUrl}/api/auth/signup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(userData)
+        });
+        return handleResponse(retryResponse);
+      }
+      throw error;
+    }
   },
 
   async login(credentials: { email: string; password: string }) {
-    const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(credentials)
-    });
-    return handleResponse(response);
+    // Force refresh IP detection for login/signup to ensure we have the latest IP
+    const { resolveBackendURL } = await import('../utils/networkConfig');
+    let backendUrl = await resolveBackendURL(3000, true); // forceRefresh = true
+    
+    try {
+      const response = await fetch(`${backendUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(credentials)
+      });
+      return handleResponse(response);
+    } catch (error: any) {
+      // If connection fails, try one more time with fresh detection
+      if (error.message?.includes('Network request failed') || error.message?.includes('Failed to fetch')) {
+        console.log('🔄 Login failed, retrying with fresh IP detection...');
+        backendUrl = await resolveBackendURL(3000, true);
+        const retryResponse = await fetch(`${backendUrl}/api/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(credentials)
+        });
+        return handleResponse(retryResponse);
+      }
+      throw error;
+    }
   },
 
   async googleLogin(googleAccessToken: string) {
@@ -85,19 +166,33 @@ export const apiService = {
 
   // User Profile
   async getUserProfile() {
-    const response = await fetch(`${API_BASE_URL}/api/user/profile`, {
-      headers: await getAuthHeaders(),
-    });
-    return handleResponse(response);
+    try {
+      const { resolveBackendURL } = await import('../utils/networkConfig');
+      const backendUrl = await resolveBackendURL(3000);
+      const response = await fetchWithTimeout(`${backendUrl}/api/user/profile`, {
+        headers: await getAuthHeaders(),
+      }, 15000);
+      return handleResponse(response);
+    } catch (error: any) {
+      console.error('Failed to fetch user profile:', error);
+      throw error;
+    }
   },
 
   async updateUserProfile(profileData: Record<string, unknown>) {
-    const response = await fetch(`${API_BASE_URL}/api/user/profile`, {
-      method: 'PUT',
-      headers: await getAuthHeaders(),
-      body: JSON.stringify(profileData)
-    });
-    return handleResponse(response);
+    try {
+      const { resolveBackendURL } = await import('../utils/networkConfig');
+      const backendUrl = await resolveBackendURL(3000);
+      const response = await fetchWithTimeout(`${backendUrl}/api/user/profile`, {
+        method: 'PUT',
+        headers: await getAuthHeaders(),
+        body: JSON.stringify(profileData)
+      }, 15000);
+      return handleResponse(response);
+    } catch (error: any) {
+      console.error('Failed to update user profile:', error);
+      throw error;
+    }
   },
 
   async uploadAvatar(imageUri: string, imageType: 'base64' | 'file' = 'base64') {
@@ -136,6 +231,13 @@ export const apiService = {
       method: 'POST',
       headers: await getAuthHeaders(),
       body: JSON.stringify({ xpAmount: amount, reason })
+    });
+    return handleResponse(response);
+  },
+
+  async getUserQuests() {
+    const response = await fetch(`${API_BASE_URL}/api/user/quests`, {
+      headers: await getAuthHeaders(),
     });
     return handleResponse(response);
   },
@@ -184,25 +286,46 @@ export const apiService = {
 
   // Leaderboard
   async getGlobalLeaderboard(filters: Record<string, string> = {}) {
-    const params = new URLSearchParams(filters);
-    const response = await fetch(`${API_BASE_URL}/api/leaderboard/global?${params}`, {
-      headers: await getAuthHeaders(),
-    });
-    return handleResponse(response);
+    try {
+      const { resolveBackendURL } = await import('../utils/networkConfig');
+      const backendUrl = await resolveBackendURL(3000);
+      const params = new URLSearchParams(filters);
+      const response = await fetchWithTimeout(`${backendUrl}/api/leaderboard/global?${params}`, {
+        headers: await getAuthHeaders(),
+      }, 15000); // 15s timeout for leaderboard
+      return handleResponse(response);
+    } catch (error: any) {
+      console.error('Failed to fetch global leaderboard:', error);
+      throw error;
+    }
   },
 
   async getFriendsLeaderboard() {
-    const response = await fetch(`${API_BASE_URL}/api/leaderboard/friends`, {
-      headers: await getAuthHeaders(),
-    });
-    return handleResponse(response);
+    try {
+      const { resolveBackendURL } = await import('../utils/networkConfig');
+      const backendUrl = await resolveBackendURL(3000);
+      const response = await fetchWithTimeout(`${backendUrl}/api/leaderboard/friends`, {
+        headers: await getAuthHeaders(),
+      }, 15000); // 15s timeout for leaderboard
+      return handleResponse(response);
+    } catch (error: any) {
+      console.error('Failed to fetch friends leaderboard:', error);
+      throw error;
+    }
   },
 
   async getUserRank(userId: number) {
-    const response = await fetch(`${API_BASE_URL}/api/leaderboard/user/${userId}`, {
-      headers: await getAuthHeaders(),
-    });
-    return handleResponse(response);
+    try {
+      const { resolveBackendURL } = await import('../utils/networkConfig');
+      const backendUrl = await resolveBackendURL(3000);
+      const response = await fetchWithTimeout(`${backendUrl}/api/leaderboard/user/${userId}`, {
+        headers: await getAuthHeaders(),
+      }, 15000); // 15s timeout for leaderboard
+      return handleResponse(response);
+    } catch (error: any) {
+      console.error('Failed to fetch user rank:', error);
+      throw error;
+    }
   },
 
   // Game Sessions
@@ -294,10 +417,27 @@ export const apiService = {
     if (category) params.append('category', category);
     if (difficulty) params.append('difficulty', difficulty);
     
-    const response = await fetch(`${CHATBOT_URL}/context/knowledge/topics?${params.toString()}`, {
-      headers: { 'Content-Type': 'application/json' },
-    });
-    return handleResponse(response);
+    try {
+      const response = await fetch(`${CHATBOT_URL}/v1/knowledge/topics?${params.toString()}`, {
+        headers: { 'Content-Type': 'application/json' },
+      });
+      
+      if (!response.ok) {
+        // Try old endpoint format as fallback
+        const fallbackResponse = await fetch(`${CHATBOT_URL}/context/knowledge/topics?${params.toString()}`, {
+          headers: { 'Content-Type': 'application/json' },
+        });
+        if (fallbackResponse.ok) {
+          return handleResponse(fallbackResponse);
+        }
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return handleResponse(response);
+    } catch (error) {
+      console.error('Failed to fetch knowledge topics:', error);
+      throw error;
+    }
   },
 
   async getKnowledgeTopic(topicId: string) {
@@ -317,18 +457,58 @@ export const apiService = {
   },
 
   async getUserLearningProgress() {
-    const response = await fetch(`${API_BASE_URL}/api/user/learning-progress`, {
+    const response = await fetch(`${API_BASE_URL}/api/learning/progress`, {
       headers: await getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  // Backend Learning API (Primary)
+  async getLearningTopics() {
+    const response = await fetch(`${API_BASE_URL}/api/learning/topics`, {
+      headers: await getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  async getLearningTopic(topicId: string) {
+    const response = await fetch(`${API_BASE_URL}/api/learning/topic/${topicId}`, {
+      headers: await getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  async completeLearningLesson(lessonId: number) {
+    const response = await fetch(`${API_BASE_URL}/api/learning/complete-lesson`, {
+      method: 'POST',
+      headers: await getAuthHeaders(),
+      body: JSON.stringify({ lessonId })
+    });
+    return handleResponse(response);
+  },
+
+  async completeLearningTopic(topicId: number) {
+    const response = await fetch(`${API_BASE_URL}/api/learning/complete-topic`, {
+      method: 'POST',
+      headers: await getAuthHeaders(),
+      body: JSON.stringify({ topicId })
     });
     return handleResponse(response);
   },
 
   // Portfolio
   async getPortfolio() {
-    const response = await fetch(`${API_BASE_URL}/api/portfolio`, {
-      headers: await getAuthHeaders(),
-    });
-    return handleResponse(response);
+    try {
+      const { resolveBackendURL } = await import('../utils/networkConfig');
+      const backendUrl = await resolveBackendURL(3000);
+      const response = await fetchWithTimeout(`${backendUrl}/api/portfolio`, {
+        headers: await getAuthHeaders(),
+      }, 15000);
+      return handleResponse(response);
+    } catch (error: any) {
+      console.error('Failed to fetch portfolio:', error);
+      throw error;
+    }
   },
 
   async getPortfolioItems() {
@@ -401,10 +581,57 @@ export const apiService = {
     if (assetClass) params.append('assetType', assetClass);
     params.append('limit', limit.toString());
     
-    const response = await fetch(`${API_BASE_URL}/api/signals/top?${params}`, {
-      headers: await getAuthHeaders(),
-    });
-    return handleResponse(response);
+    const endpoint = `${API_BASE_URL}/api/signals/top?${params}`;
+    
+    try {
+      // Try RL service first (shorter timeout since it's optional)
+      const { resolveBackendURL } = await import('../utils/networkConfig');
+      const rlUrl = await resolveBackendURL(5002);
+      const rlEndpoint = `${rlUrl}/api/top-setups?${params}`;
+      
+      try {
+        const response = await fetchWithTimeout(rlEndpoint, {
+          headers: await getAuthHeaders(),
+        }, 10000); // 10s timeout for RL service
+        
+        if (response.ok) {
+          const rlData = await response.json();
+          
+          // Normalize RL service response to match backend shape { success, data }
+          // RL service might return { setups: [...] } or just an array or { data: [...] }
+          let normalizedData: any[] = [];
+          
+          if (Array.isArray(rlData)) {
+            normalizedData = rlData;
+          } else if (rlData.setups && Array.isArray(rlData.setups)) {
+            normalizedData = rlData.setups;
+          } else if (rlData.data && Array.isArray(rlData.data)) {
+            normalizedData = rlData.data;
+          } else if (rlData.success && rlData.data && Array.isArray(rlData.data)) {
+            // Already in correct format
+            return rlData;
+          }
+          
+          // Return normalized response matching backend format
+          return {
+            success: true,
+            data: normalizedData
+          };
+        }
+      } catch (rlError: any) {
+        // RL service timeout or error - fall back to backend
+        console.warn('RL service unavailable, using backend signals:', rlError.message);
+      }
+      
+      // Fallback to backend signals endpoint
+      const response = await fetchWithTimeout(endpoint, {
+        headers: await getAuthHeaders(),
+      });
+      return await handleResponse(response, endpoint);
+    } catch (error: any) {
+      console.error(`Failed to fetch signals from ${endpoint}:`, error);
+      throw error;
+    }
   },
 
   async getHistoricalSignals(filters: { limit?: number; assetType?: string; outcome?: string; offset?: number } = {}) {
@@ -513,10 +740,17 @@ export const apiService = {
   },
 
   async getUnreadNotificationCount() {
-    const response = await fetch(`${API_BASE_URL}/api/notifications/unread-count`, {
-      headers: await getAuthHeaders(),
-    });
-    return handleResponse(response);
+    try {
+      const { resolveBackendURL } = await import('../utils/networkConfig');
+      const backendUrl = await resolveBackendURL(3000);
+      const response = await fetchWithTimeout(`${backendUrl}/api/notifications/unread-count`, {
+        headers: await getAuthHeaders(),
+      }, 10000); // 10s timeout for notifications
+      return handleResponse(response);
+    } catch (error: any) {
+      console.error('Failed to fetch unread notification count:', error);
+      throw error;
+    }
   },
 
   async markNotificationRead(notificationId: string) {
@@ -561,10 +795,32 @@ export const apiService = {
     if (limit) params.append('limit', limit.toString());
     if (timeframe) params.append('timeframe', timeframe);
     
-    const response = await fetch(`${API_BASE_URL}/api/market-data/trending?${params.toString()}`, {
-      headers: await getAuthHeaders(),
-    });
-    return handleResponse(response);
+    const endpoint = `${API_BASE_URL}/api/market-data/trending?${params.toString()}`;
+    
+    try {
+      const response = await fetchWithTimeout(endpoint, {
+        headers: await getAuthHeaders(),
+      });
+      const result = await handleResponse(response, endpoint);
+      
+      // Ensure consistent format - always return { articles: [] } structure
+      if (result && typeof result === 'object') {
+        if (Array.isArray(result)) {
+          return { articles: result };
+        } else if (result.articles && Array.isArray(result.articles)) {
+          return result;
+        } else if (result.data && Array.isArray(result.data)) {
+          return { articles: result.data };
+        }
+      }
+      
+      // Default to empty array if format is unexpected
+      return { articles: [] };
+    } catch (error: any) {
+      console.error(`Failed to fetch trending market data from ${endpoint}:`, error);
+      // Return empty structure on error to prevent crashes
+      return { articles: [] };
+    }
   },
 
   async searchNews(query: string, limit?: number) {

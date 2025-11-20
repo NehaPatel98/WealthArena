@@ -8,6 +8,7 @@ import { makeRedirectUri } from 'expo-auth-session';
 import { useTheme, Text, Button, TextInput, Card, Icon, FoxMascot, tokens } from '@/src/design-system';
 import { signup, googleSignup } from '@/services/apiService';
 import { useUser } from '@/contexts/UserContext';
+import { API_CONFIG, getNetworkInfo } from '@/config/apiConfig';
 
 // Complete OAuth session when browser redirects back
 WebBrowser.maybeCompleteAuthSession();
@@ -140,23 +141,30 @@ export default function SignupScreen() {
         
         await loginUser(userData, response.data.token);
         
-        Alert.alert(
-          'Welcome to WealthArena! 🎉',
-          `Account created successfully! Let's get you started, ${response.data.user.username}!`,
-          [
-            { 
-              text: 'Continue', 
-              onPress: () => {
-                router.replace('/onboarding');
-              }
-            }
-          ]
-        );
+        // Directly redirect to onboarding without Alert dialog
+        router.replace('/onboarding');
       } else {
         Alert.alert('Signup Failed', response.message);
       }
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to create account. Please try again.';
+      let errorMessage = 'Failed to create account. Please try again.';
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+        // Check for network-related errors
+        if (error.message.includes('Network request failed') || error.message.includes('Failed to fetch')) {
+          const networkInfo = getNetworkInfo();
+          const backendURL = API_CONFIG.BACKEND_BASE_URL;
+          
+          // eslint-disable-next-line no-console
+          console.error('Network error - Backend URL:', backendURL);
+          // eslint-disable-next-line no-console
+          console.error('Network info:', networkInfo);
+          
+          errorMessage = `Cannot connect to server (${backendURL}). Please ensure:\n\n1. Backend is running on port 3000\n2. Your device and computer are on the same network\n3. Firewall allows connections on port 3000\n4. If using a physical device, check .env.local has EXPO_PUBLIC_BACKEND_URL set with your machine's IP\n\nAuto-detected IP: ${networkInfo.autoDetectedIP}`;
+        }
+      }
+      
       // eslint-disable-next-line no-console
       console.error('Signup error:', errorMessage);
       
@@ -204,7 +212,16 @@ export default function SignupScreen() {
         Alert.alert('Signup Failed', response.message || 'Google authentication failed');
       }
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to sign up with Google. Please try again.';
+      let errorMessage = 'Failed to sign up with Google. Please try again.';
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+        // Check for network-related errors
+        if (error.message.includes('Network request failed') || error.message.includes('Failed to fetch')) {
+          errorMessage = 'Cannot connect to server. Please ensure:\n\n1. Backend is running on port 3000\n2. Your device and computer are on the same network\n3. Firewall allows connections on port 3000';
+        }
+      }
+      
       // eslint-disable-next-line no-console
       console.error('Google signup error:', errorMessage);
       

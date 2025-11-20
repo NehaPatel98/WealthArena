@@ -174,41 +174,8 @@ export default function AnalyticsScreen() {
     setRefreshing(false);
   };
 
-  // Fallback mock performance data (when backend data not available)
-  const mockPerformanceData: CandleData[] = useMemo(() => {
-    const data: CandleData[] = [];
-    const basePrice = 100000;
-    const days = selectedTimeframe === '1D' ? 1 : 
-                 selectedTimeframe === '1W' ? 7 :
-                 selectedTimeframe === '1M' ? 30 :
-                 selectedTimeframe === '3M' ? 90 :
-                 selectedTimeframe === '1Y' ? 365 : 730;
-    
-    for (let i = 0; i < days; i++) {
-      const date = new Date();
-      date.setDate(date.getDate() - (days - i - 1));
-      
-      const randomChange = (Math.random() - 0.5) * 0.04; // ±2% daily change
-      const price = basePrice * (1 + randomChange * i / days);
-      const volatility = 0.02;
-      
-      const open = price * (1 + (Math.random() - 0.5) * volatility);
-      const close = price * (1 + (Math.random() - 0.5) * volatility);
-      const high = Math.max(open, close) * (1 + Math.random() * volatility);
-      const low = Math.min(open, close) * (1 - Math.random() * volatility);
-      
-      data.push({
-        timestamp: date.toISOString().split('T')[0],
-        open: Math.round(open * 100) / 100,
-        high: Math.round(high * 100) / 100,
-        low: Math.round(low * 100) / 100,
-        close: Math.round(close * 100) / 100,
-        volume: Math.floor(Math.random() * 1000000) + 500000,
-      });
-    }
-    
-    return data;
-  }, [selectedTimeframe]);
+  // Use real performance data from backend, only use mock as absolute last resort
+  // The backend should provide performanceHistory in fetchAnalyticsData
 
   // Performance metrics
   const performanceMetrics: PerformanceMetric[] = useMemo(() => [
@@ -472,26 +439,35 @@ export default function AnalyticsScreen() {
             <Badge variant="primary" size="small">{selectedTimeframe}</Badge>
           </View>
           
-          {(performanceData.length > 0 || mockPerformanceData.length > 0) && (
+          {performanceData.length > 0 ? (
             <CandlestickChart
-              data={performanceData.length > 0 ? performanceData : mockPerformanceData}
+              data={performanceData}
               chartType="daily"
               beginnerMode={false}
               showTooltip={true}
             />
+          ) : (
+            <View style={styles.loadingContainer}>
+              <Text variant="small" muted center>
+                {isLoadingData ? 'Loading performance data...' : 'No performance data available'}
+              </Text>
+              <Text variant="xs" muted center style={{ marginTop: tokens.spacing.xs }}>
+                {isLoadingData ? 'Please wait...' : 'Complete some trades to see your portfolio performance'}
+              </Text>
+            </View>
           )}
           
           <View style={styles.chartStats}>
             <View style={styles.chartStat}>
               <Text variant="xs" muted>Start Value</Text>
               <Text variant="small" weight="semibold">
-                ${((performanceData.length > 0 ? performanceData : mockPerformanceData)[0]?.close || 0).toLocaleString()}
+                ${(performanceData[0]?.close || 0).toLocaleString()}
               </Text>
             </View>
             <View style={styles.chartStat}>
               <Text variant="xs" muted>End Value</Text>
               <Text variant="small" weight="semibold">
-                ${((performanceData.length > 0 ? performanceData : mockPerformanceData)[(performanceData.length > 0 ? performanceData : mockPerformanceData).length - 1]?.close || 0).toLocaleString()}
+                ${(performanceData[performanceData.length - 1]?.close || 0).toLocaleString()}
               </Text>
             </View>
             <View style={styles.chartStat}>

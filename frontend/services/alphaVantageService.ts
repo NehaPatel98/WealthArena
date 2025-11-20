@@ -120,29 +120,29 @@ export class AlphaVantageService {
       if (data['Error Message']) {
         // Only log error once per session to reduce noise
         if (!this.errorLogged) {
-          console.warn(`Alpha Vantage API Error: ${data['Error Message']}. Using mock data for all symbols.`);
+          console.warn(`Alpha Vantage API Error: ${data['Error Message']}. Falling back to yfinance.`);
           this.errorLogged = true;
         }
-        return this.generateMockData(symbol);
+        throw new Error(`Alpha Vantage API Error: ${data['Error Message']}`);
       }
       
       if (data['Note']) {
         // Only log rate limit note once per session
         if (!this.rateLimitLogged) {
-          console.warn(`Alpha Vantage API Rate Limit: ${data['Note']}. Using mock data for all symbols.`);
+          console.warn(`Alpha Vantage API Rate Limit: ${data['Note']}. Falling back to yfinance.`);
           this.rateLimitLogged = true;
         }
-        return this.generateMockData(symbol);
+        throw new Error(`Alpha Vantage API Rate Limit: ${data['Note']}`);
       }
       
       const timeSeries = data['Time Series (Daily)'];
       if (!timeSeries) {
         // Only log missing data warning once per session
         if (!this.missingDataLogged) {
-          console.warn(`No time series data available from Alpha Vantage API. Using mock data for all symbols.`);
+          console.warn(`No time series data available from Alpha Vantage API. Falling back to yfinance.`);
           this.missingDataLogged = true;
         }
-        return this.generateMockData(symbol);
+        throw new Error('No time series data available from Alpha Vantage API');
       }
       
       // Convert Alpha Vantage format to our format
@@ -160,10 +160,10 @@ export class AlphaVantageService {
     } catch (error) {
       // Only log network error once per session
       if (!this.networkErrorLogged) {
-        console.warn(`Network error connecting to Alpha Vantage API. Using mock data for all symbols.`, error);
+        console.warn(`Network error connecting to Alpha Vantage API. Falling back to yfinance.`, error);
         this.networkErrorLogged = true;
       }
-      return this.generateMockData(symbol);
+      throw error; // Re-throw to allow fallback chain to continue
     }
   }
 
@@ -182,19 +182,19 @@ export class AlphaVantageService {
       if (data['Error Message']) {
         // Use existing error logging flags
         if (!this.errorLogged) {
-          console.warn(`Alpha Vantage API Error: ${data['Error Message']}. Using mock data for all symbols.`);
+          console.warn(`Alpha Vantage API Error: ${data['Error Message']}. Falling back to yfinance.`);
           this.errorLogged = true;
         }
-        return this.generateMockData(symbol, 10); // Less data for intraday
+        throw new Error(`Alpha Vantage API Error: ${data['Error Message']}`);
       }
       
       if (data['Note']) {
         // Use existing rate limit logging flags
         if (!this.rateLimitLogged) {
-          console.warn(`Alpha Vantage API Rate Limit: ${data['Note']}. Using mock data for all symbols.`);
+          console.warn(`Alpha Vantage API Rate Limit: ${data['Note']}. Falling back to yfinance.`);
           this.rateLimitLogged = true;
         }
-        return this.generateMockData(symbol, 10);
+        throw new Error(`Alpha Vantage API Rate Limit: ${data['Note']}`);
       }
       
       const timeSeriesKey = `Time Series (${interval})`;
@@ -202,10 +202,10 @@ export class AlphaVantageService {
       if (!timeSeries) {
         // Use existing missing data logging flags
         if (!this.missingDataLogged) {
-          console.warn(`No time series data available from Alpha Vantage API. Using mock data for all symbols.`);
+          console.warn(`No time series data available from Alpha Vantage API. Falling back to yfinance.`);
           this.missingDataLogged = true;
         }
-        return this.generateMockData(symbol, 10);
+        throw new Error('No time series data available from Alpha Vantage API');
       }
       
       // Convert Alpha Vantage format to our format
@@ -223,10 +223,10 @@ export class AlphaVantageService {
     } catch (error) {
       // Use existing network error logging flags
       if (!this.networkErrorLogged) {
-        console.warn(`Network error connecting to Alpha Vantage API. Using mock data for all symbols.`, error);
+        console.warn(`Network error connecting to Alpha Vantage API. Falling back to yfinance.`, error);
         this.networkErrorLogged = true;
       }
-      return this.generateMockData(symbol, 10);
+      throw error; // Re-throw to allow fallback chain to continue
     }
   }
 
@@ -253,6 +253,76 @@ export class AlphaVantageService {
       'QQQ', // NASDAQ ETF
       'IWM', // Russell 2000 ETF
     ];
+  }
+
+  /**
+   * Fetch news from Alpha Vantage News & Sentiment API
+   * @param topics Comma-separated topics (e.g., 'earnings,ipo,mergers_and_acquisitions')
+   * @param timeFrom Start time in format YYYYMMDDTHHMM (e.g., '20240101T0000')
+   * @param limit Maximum number of articles (default: 50, max: 1000)
+   * @param sort Sort order: 'LATEST' or 'RELEVANCE' (default: 'LATEST')
+   */
+  async getNews(
+    topics: string = 'earnings,ipo,mergers_and_acquisitions,financial_markets,technology',
+    timeFrom?: string,
+    limit: number = 50,
+    sort: 'LATEST' | 'RELEVANCE' = 'LATEST'
+  ): Promise<any[]> {
+    try {
+      // Default to last 7 days if timeFrom not provided
+      if (!timeFrom) {
+        const date = new Date();
+        date.setDate(date.getDate() - 7);
+        timeFrom = date.toISOString().replace(/[-:]/g, '').split('.')[0].replace('T', 'T');
+      }
+
+      const url = `${this.baseUrl}?function=NEWS_SENTIMENT&topics=${topics}&time_from=${timeFrom}&limit=${limit}&sort=${sort}&apikey=${this.apiKey}`;
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      
+      const response = await fetch(url, {
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
+      const data = await response.json();
+      
+      if (data['Error Message']) {
+        console.warn(`Alpha Vantage News API Error: ${data['Error Message']}`);
+        return [];
+      }
+      
+      if (data['Note']) {
+        console.warn(`Alpha Vantage News API Rate Limit: ${data['Note']}`);
+        return [];
+      }
+      
+      return data.feed || [];
+    } catch (error) {
+      console.warn('Failed to fetch news from Alpha Vantage:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get daily news (last 24 hours)
+   */
+  async getDailyNews(limit: number = 50): Promise<any[]> {
+    const date = new Date();
+    date.setDate(date.getDate() - 1);
+    const timeFrom = date.toISOString().replace(/[-:]/g, '').split('.')[0].replace('T', 'T');
+    return this.getNews(undefined, timeFrom, limit, 'LATEST');
+  }
+
+  /**
+   * Get weekly news (last 7 days)
+   */
+  async getWeeklyNews(limit: number = 100): Promise<any[]> {
+    const date = new Date();
+    date.setDate(date.getDate() - 7);
+    const timeFrom = date.toISOString().replace(/[-:]/g, '').split('.')[0].replace('T', 'T');
+    return this.getNews(undefined, timeFrom, limit, 'LATEST');
   }
 }
 

@@ -157,7 +157,7 @@ router.post('/', authenticateToken, async (req: AuthRequest, res) => {
       riskLevel: riskLevel || 'Moderate',
     });
 
-    const portfolioId = portfolioResult.recordset[0].id;
+    const portfolioId = (portfolioResult.recordset[0] as { id: number }).id;
 
     // Create positions for each asset
     const positions = [];
@@ -219,7 +219,14 @@ router.post('/from-signal', authenticateToken, async (req: AuthRequest, res) => 
       return errorResponse(res, 'Signal not found', 404);
     }
 
-    const signal = signalResult.recordset[0];
+    const signal = signalResult.recordset[0] as {
+      entry_price?: number;
+      stop_loss_price?: number;
+      take_profit_1?: number;
+      take_profit_2?: number;
+      take_profit_3?: number;
+      symbol: string;
+    };
 
     // Validate and set defaults for signal fields with null-safety
     const entryPrice = signal.entry_price || 0;
@@ -272,7 +279,7 @@ router.post('/from-signal', authenticateToken, async (req: AuthRequest, res) => 
       investmentAmount,
     });
 
-    const portfolioId = portfolioResult.recordset[0].id;
+    const portfolioId = (portfolioResult.recordset[0] as { id: number }).id;
 
     // Calculate quantity ensuring minimum of 1 if investment allows
     let quantity = Math.floor(positionSize / entryPrice);
@@ -434,7 +441,7 @@ router.get('/:portfolioId/performance', authenticateToken, async (req: AuthReque
       return errorResponse(res, 'Performance data not found', 404);
     }
 
-    const performance = performanceResult.recordset[0];
+    const performance = performanceResult.recordset[0] as Record<string, any>;
 
     // Calculate additional metrics (daily, weekly, monthly returns)
     const additionalMetricsQuery = `
@@ -446,12 +453,13 @@ router.get('/:portfolioId/performance', authenticateToken, async (req: AuthReque
       WHERE t.portfolio_id = @portfolioId AND t.realized_pnl IS NOT NULL
     `;
     const additionalMetrics = await executeQuery(additionalMetricsQuery, { portfolioId });
+    const metrics = additionalMetrics.recordset[0] as { DailyReturn?: number; WeeklyReturn?: number; MonthlyReturn?: number } | undefined;
 
     return successResponse(res, {
       ...performance,
-      dailyReturn: additionalMetrics.recordset[0]?.DailyReturn || 0,
-      weeklyReturn: additionalMetrics.recordset[0]?.WeeklyReturn || 0,
-      monthlyReturn: additionalMetrics.recordset[0]?.MonthlyReturn || 0,
+      dailyReturn: metrics?.DailyReturn || 0,
+      weeklyReturn: metrics?.WeeklyReturn || 0,
+      monthlyReturn: metrics?.MonthlyReturn || 0,
     });
   } catch (error) {
     return errorResponse(res, 'Failed to fetch portfolio performance', 500, error);

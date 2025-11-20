@@ -4,11 +4,20 @@
  */
 
 import express from 'express';
-import { executeQuery, executeProcedure } from '../config/db';
+import { executeQuery, executeProcedure, isMockMode } from '../config/db';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { successResponse, errorResponse } from '../utils/responses';
 
 const router = express.Router();
+
+// Type definitions for leaderboard results
+interface CompetitionJoinResult {
+  ResultCode: number;
+  Message?: string;
+  CompetitionID?: number;
+  MaxParticipants?: number;
+  CurrentParticipants?: number;
+}
 
 /**
  * GET /api/leaderboard/global
@@ -16,6 +25,18 @@ const router = express.Router();
  */
 router.get('/global', authenticateToken, async (req: AuthRequest, res) => {
   try {
+    // Handle mock mode
+    if (isMockMode()) {
+      return successResponse(res, {
+        leaderboard: [],
+        pagination: {
+          limit: parseInt(req.query.limit as string) || 100,
+          offset: parseInt(req.query.offset as string) || 0,
+          total: 0
+        }
+      });
+    }
+
     const { 
       timeframe = 'all', 
       category = 'total_returns', 
@@ -93,6 +114,11 @@ router.get('/global', authenticateToken, async (req: AuthRequest, res) => {
  */
 router.get('/friends', authenticateToken, async (req: AuthRequest, res) => {
   try {
+    // Handle mock mode
+    if (isMockMode()) {
+      return successResponse(res, []);
+    }
+
     const userId = req.userId!;
     const { timeframe = 'all', limit = 50 } = req.query;
 
@@ -295,21 +321,26 @@ router.post('/competition/:competitionId/join', authenticateToken, async (req: A
     });
 
     // Check result code from stored procedure
-    if (joinResult.recordset.length === 0 || !joinResult.recordset[0].ResultCode) {
+    if (joinResult.recordset.length === 0) {
       return errorResponse(res, 'Failed to join competition - no result returned', 500);
     }
 
-    const resultCode = joinResult.recordset[0].ResultCode;
-    const message = joinResult.recordset[0].Message || 'Unknown error';
+    const joinRecord = joinResult.recordset[0] as CompetitionJoinResult;
+    if (!joinRecord.ResultCode) {
+      return errorResponse(res, 'Failed to join competition - no result returned', 500);
+    }
+
+    const resultCode = joinRecord.ResultCode;
+    const message = joinRecord.Message || 'Unknown error';
 
     // Map negative result codes to appropriate HTTP errors
     if (resultCode === 0) {
       // Success
       return successResponse(res, {
         message: message,
-        competitionId: joinResult.recordset[0].CompetitionID,
-        maxParticipants: joinResult.recordset[0].MaxParticipants,
-        currentParticipants: joinResult.recordset[0].CurrentParticipants
+        competitionId: joinRecord.CompetitionID,
+        maxParticipants: joinRecord.MaxParticipants,
+        currentParticipants: joinRecord.CurrentParticipants
       });
     } else if (resultCode === -1) {
       return errorResponse(res, message || 'Competition not found or not active', 404);
@@ -335,6 +366,35 @@ router.post('/competition/:competitionId/join', authenticateToken, async (req: A
 router.get('/user/:userId', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const { userId } = req.params;
+    const userIdNum = parseInt(userId);
+    
+    if (isNaN(userIdNum)) {
+      return errorResponse(res, 'Invalid user ID', 400);
+    }
+
+    // Handle mock mode - return mock user stats
+    if (isMockMode()) {
+      const mockUserStats = {
+        GlobalRank: 1,
+        UserID: userIdNum,
+        Username: `user${userIdNum}`,
+        DisplayName: `User ${userIdNum}`,
+        AvatarURL: null,
+        TotalReturns: 0,
+        WinRate: 0,
+        TotalTrades: 0,
+        ProfitFactor: 0,
+        SharpeRatio: 0,
+        MaxDrawdown: 0,
+        CurrentStreak: 0,
+        TotalXP: 0,
+        Tier: 'Bronze',
+        LastUpdated: new Date().toISOString(),
+        recentAchievements: []
+      };
+      return successResponse(res, mockUserStats);
+    }
+
     const { timeframe = 'all' } = req.query;
 
     let timeFilter = '';
@@ -373,7 +433,7 @@ router.get('/user/:userId', authenticateToken, async (req: AuthRequest, res) => 
       return errorResponse(res, 'User not found', 404);
     }
 
-    const userStats = result.recordset[0];
+    const userStats = result.recordset[0] as Record<string, any>;
 
     // Get user's recent achievements
     const achievementsQuery = `

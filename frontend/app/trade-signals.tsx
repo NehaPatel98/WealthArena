@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme, Text, Card, Button, Icon, Badge, FAB, tokens, CandleData, TextInput } from '@/src/design-system';
 import CandlestickChart from '../components/CandlestickChart';
 import AISignalCard from '../components/AISignalCard';
+import { SignalCardWithChart } from '../components/SignalCardWithChart';
 import { AITradingSignal } from '../types/ai-signal';
 import { rlAgentService } from '../services/rlAgentService';
 import { getTopSignals, getHistoricalSignals, createPortfolioFromSignal } from '@/services/apiService';
@@ -467,10 +468,25 @@ export default function TradeSignalsScreen() {
         {/* AI Signals List */}
         {viewMode === 'ai' && (
           <>
-            <AISignalCard signal={SAMPLE_AI_SIGNAL} />
-            <Text variant="small" muted center style={{ marginVertical: tokens.spacing.md }}>
-              This is a sample AI signal. When connected to the API, you'll see the top 3 AI-recommended signals here.
-            </Text>
+            {isLoadingRLData ? (
+              <View style={styles.loadingContainer}>
+                <Text variant="small" muted center>Loading AI signals...</Text>
+              </View>
+            ) : rlTopSetups.length > 0 ? (
+              rlTopSetups.map((setup, index) => (
+                <AISignalCard key={setup.symbol || index} signal={setup} />
+              ))
+            ) : (
+              <Card style={styles.emptyStateCard}>
+                <Icon name="signal" size={48} color={theme.muted} />
+                <Text variant="h3" weight="semibold" center style={{ marginTop: tokens.spacing.md }}>
+                  No AI Signals Available
+                </Text>
+                <Text variant="small" muted center style={{ marginTop: tokens.spacing.sm }}>
+                  AI signals are generated using Multi-Agent Reinforcement Learning. Check back later for new signals.
+                </Text>
+              </Card>
+            )}
           </>
         )}
 
@@ -564,172 +580,27 @@ export default function TradeSignalsScreen() {
                 <Text variant="small" muted center>Loading signals...</Text>
               ) : backendSignals.length > 0 ? (
                 backendSignals.map((signal) => (
-                  <Card key={signal.SignalID} style={styles.signalCard}>
-                    <View style={styles.signalHeader}>
-                      <View style={styles.signalLeft}>
-                        <Text variant="body" weight="bold">{signal.Symbol}</Text>
-                        <Text variant="xs" muted>{signal.AssetType}</Text>
-                      </View>
-                      <Badge variant={getSignalVariant(signal.Signal)} size="medium">
-                        {signal.Signal}
-                      </Badge>
-                    </View>
-
-                    <View style={styles.signalMetrics}>
-                      <View style={styles.metric}>
-                        <Text variant="xs" muted>Entry Price</Text>
-                        <Text variant="small" weight="semibold">
-                          ${signal.EntryPrice?.toFixed(2)}
-                        </Text>
-                      </View>
-                      <View style={styles.metric}>
-                        <Text variant="xs" muted>Target</Text>
-                        <Text variant="small" weight="semibold">
-                          ${signal.TakeProfit1?.toFixed(2)}
-                        </Text>
-                      </View>
-                      <View style={styles.metric}>
-                        <Text variant="xs" muted>Expected Return</Text>
-                        <Text variant="small" weight="semibold" color={theme.primary}>
-                          {signal.ExpectedReturn?.toFixed(2)}%
-                        </Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.confidenceContainer}>
-                      <View style={styles.confidenceLabel}>
-                        <Text variant="xs" muted>Confidence</Text>
-                        <Text variant="xs" weight="semibold">{(signal.Confidence * 100).toFixed(0)}%</Text>
-                      </View>
-                      <View style={[styles.confidenceBar, { backgroundColor: theme.border }]}>
-                        <View 
-                          style={[
-                            styles.confidenceFill, 
-                            { 
-                              backgroundColor: getSignalColor(signal.Signal),
-                              width: `${(signal.Confidence * 100)}%` 
-                            }
-                          ]} 
-                        />
-                      </View>
-                    </View>
-
-                    <View style={styles.signalActions}>
-                      <Button
-                        variant="secondary"
-                        size="small"
-                        onPress={() => router.push('/explainability')}
-                        icon={<Icon name="lab" size={16} color={theme.primary} />}
-                      >
-                        Explain
-                      </Button>
-                      <Button
-                        variant="primary"
-                        size="small"
-                        onPress={() => handleCreatePortfolioFromSignal(signal)}
-                        disabled={isCreatingPortfolio}
-                        icon={<Icon name="briefcase" size={16} color={theme.bg} />}
-                      >
-                        Create Portfolio
-                      </Button>
-                    </View>
-                  </Card>
+                  <SignalCardWithChart
+                    key={signal.SignalID}
+                    signal={signal}
+                    onExplain={() => router.push('/explainability')}
+                    onCreatePortfolio={() => handleCreatePortfolioFromSignal(signal)}
+                    getSignalColor={getSignalColor}
+                    getSignalVariant={getSignalVariant}
+                    theme={theme}
+                    router={router}
+                  />
                 ))
               ) : (
-                SIGNALS[selectedAsset].map((signal) => (
-                  <Pressable 
-                    key={signal.symbol}
-                    onPress={() => router.push('/explainability')}
-                  >
-                    <Card style={styles.signalCard}>
-                      <View style={styles.signalHeader}>
-                        <View style={styles.signalLeft}>
-                          <Text variant="body" weight="bold">{signal.symbol}</Text>
-                          <Text variant="xs" muted>{signal.name}</Text>
-                        </View>
-                        <Badge variant={getSignalVariant(signal.signal)} size="medium">
-                          {signal.signal}
-                        </Badge>
-                      </View>
-
-                      <View style={styles.signalMetrics}>
-                        <View style={styles.metric}>
-                          <Text variant="xs" muted>Price</Text>
-                          <Text variant="small" weight="semibold">
-                            ${signal.price.toLocaleString()}
-                          </Text>
-                        </View>
-                        <View style={styles.metric}>
-                          <Text variant="xs" muted>Target</Text>
-                          <Text variant="small" weight="semibold">
-                            ${signal.target.toLocaleString()}
-                          </Text>
-                        </View>
-                        <View style={styles.metric}>
-                          <Text variant="xs" muted>Change</Text>
-                          <Text 
-                            variant="small" 
-                            weight="semibold"
-                            color={signal.change > 0 ? theme.primary : theme.danger}
-                          >
-                            {signal.change > 0 ? '+' : ''}{signal.change}%
-                          </Text>
-                        </View>
-                      </View>
-
-                      {/* Mini Candlestick Chart */}
-                      <CandlestickChart 
-                        data={signal.candleData.map(candle => ({
-                          time: candle.timestamp,
-                          open: candle.open,
-                          high: candle.high,
-                          low: candle.low,
-                          close: candle.close
-                        }))} 
-                        chartType="daily"
-                      />
-
-                      {/* Confidence Bar */}
-                      <View style={styles.confidenceContainer}>
-                        <View style={styles.confidenceLabel}>
-                          <Text variant="xs" muted>Confidence</Text>
-                          <Text variant="xs" weight="semibold">{signal.confidence}%</Text>
-                        </View>
-                        <View style={[styles.confidenceBar, { backgroundColor: theme.border }]}>
-                          <View 
-                            style={[
-                              styles.confidenceFill, 
-                              { 
-                                backgroundColor: getSignalColor(signal.signal),
-                                width: `${signal.confidence}%` 
-                              }
-                            ]} 
-                          />
-                        </View>
-                      </View>
-
-                      {/* Actions */}
-                      <View style={styles.signalActions}>
-                        <Button
-                          variant="secondary"
-                          size="small"
-                          onPress={() => router.push('/explainability')}
-                          icon={<Icon name="lab" size={16} color={theme.primary} />}
-                        >
-                          Explain
-                        </Button>
-                        <Button
-                          variant="primary"
-                          size="small"
-                          onPress={() => router.push('/trade-setup')}
-                          icon={<Icon name="execute" size={16} color={theme.bg} />}
-                        >
-                          Trade
-                        </Button>
-                      </View>
-                    </Card>
-                  </Pressable>
-                ))
+                <Card style={styles.emptyStateCard}>
+                  <Icon name="signal" size={48} color={theme.muted} />
+                  <Text variant="h3" weight="semibold" center style={{ marginTop: tokens.spacing.md }}>
+                    No Signals Available
+                  </Text>
+                  <Text variant="small" muted center style={{ marginTop: tokens.spacing.sm }}>
+                    No trading signals found for {selectedAsset}. Check back later or try a different asset type.
+                  </Text>
+                </Card>
               )
             )}
           </>
@@ -898,5 +769,22 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: 'white',
     alignSelf: 'flex-start',
+  },
+  emptyStateCard: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: tokens.spacing.xl,
+    gap: tokens.spacing.sm,
+  },
+  loadingContainer: {
+    padding: tokens.spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chartLoading: {
+    padding: tokens.spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 150,
   },
 });

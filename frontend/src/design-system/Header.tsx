@@ -1,5 +1,5 @@
 // Header Component - Top navigation with greeting and actions
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, Pressable, Image } from 'react-native';
 import { useTheme } from './ThemeProvider';
 import { Text } from './Text';
@@ -8,6 +8,7 @@ import { FoxMascot } from './mascots/index';
 import { tokens } from './tokens';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { apiService } from '@/services/apiService';
 
 export interface HeaderProps {
   greeting?: string;
@@ -34,6 +35,31 @@ export const Header = ({
 }: HeaderProps) => {
   const { theme } = useTheme();
   const router = useRouter();
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  // Fetch unread notification count
+  useEffect(() => {
+    if (!showNotifications) return;
+
+    const fetchUnreadCount = async () => {
+      try {
+        const count = await apiService.getUnreadNotificationCount();
+        const countValue = count.count || count || 0;
+        setUnreadCount(countValue);
+      } catch (error) {
+        console.error('Failed to fetch unread notification count:', error);
+        setUnreadCount(0);
+      }
+    };
+
+    // Fetch immediately
+    fetchUnreadCount();
+
+    // Poll every 30 seconds to keep count updated
+    const interval = setInterval(fetchUnreadCount, 30000);
+
+    return () => clearInterval(interval);
+  }, [showNotifications]);
 
   const handleNotificationPress = () => {
     if (onNotificationPress) {
@@ -108,14 +134,18 @@ export const Header = ({
                 { opacity: pressed ? 0.6 : 1 }
               ]}
               accessibilityRole="button"
-              accessibilityLabel="Notifications"
+              accessibilityLabel={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ''}`}
             >
               <View>
                 <Ionicons name="notifications" size={22} color={theme.text} />
-                {/* Notification badge */}
-                <View style={[styles.notificationBadge, { backgroundColor: '#FF4B4B' }]}>
-                  <Text style={styles.badgeText}>3</Text>
-                </View>
+                {/* Notification badge - only show when there are unread notifications */}
+                {unreadCount > 0 && (
+                  <View style={[styles.notificationBadge, { backgroundColor: '#FF4B4B' }]}>
+                    <Text style={styles.badgeText}>
+                      {unreadCount > 99 ? '99+' : unreadCount.toString()}
+                    </Text>
+                  </View>
+                )}
               </View>
             </Pressable>
           )}
@@ -189,16 +219,18 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -4,
     right: -4,
-    width: 16,
+    minWidth: 16,
     height: 16,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 4,
   },
   badgeText: {
     color: '#FFFFFF',
     fontSize: 10,
     fontWeight: '700',
+    lineHeight: 12,
   },
   lastUpdated: {
     marginTop: tokens.spacing.xs,

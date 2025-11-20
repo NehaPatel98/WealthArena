@@ -3,8 +3,9 @@
  * Handles communication with the WealthArena RL Backend API
  */
 
-const RL_API_URL = process.env.EXPO_PUBLIC_RL_API_URL || 
-  (__DEV__ ? 'http://localhost:8000' : 'https://wealtharena-rl-5224.azurewebsites.net');
+const RL_API_URL = process.env.EXPO_PUBLIC_RL_SERVICE_URL || 
+  process.env.EXPO_PUBLIC_RL_API_URL || 
+  (__DEV__ ? 'http://localhost:5002' : 'https://wealtharena-rl-5224.azurewebsites.net');
 
 export interface MarketDataRequest {
   symbols: string[];

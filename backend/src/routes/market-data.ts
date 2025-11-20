@@ -1,14 +1,18 @@
 /**
  * Market Data Routes
  * Real-time and historical market data endpoints
+ * Primary source: Database (from data-pipeline raw files)
+ * Fallback: External APIs (Alpha Vantage, yfinance)
  */
 
 import express from 'express';
 import { executeQuery } from '../config/db';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { successResponse, errorResponse } from '../utils/responses';
+import { getDataPipelineService } from '../services/dataPipelineService';
 
 const router = express.Router();
+const dataPipelineService = getDataPipelineService();
 
 /**
  * GET /api/market-data/symbols
@@ -54,62 +58,107 @@ router.get('/symbols', authenticateToken, async (req: AuthRequest, res) => {
 /**
  * GET /api/market-data/history/:symbol
  * Get historical data for a symbol
+ * Primary: Database (from data-pipeline)
+ * Fallback: External APIs
  */
 router.get('/history/:symbol', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const { symbol } = req.params;
-    const { period = '1d', interval = '1m', start_date, end_date } = req.query;
+    const { period = '1mo', days } = req.query;
 
-    let query = `
-      SELECT 
-        Symbol,
-        Timestamp,
-        Price,
-        Volume,
-        High,
-        Low,
-        Open,
-        PriceChange1m,
-        PriceChange5m,
-        PriceChange15m,
-        VolumeAvg1h,
-        Volatility1h,
-        RSI14,
-        SMA20,
-        SignalStrength
-      FROM MarketData
-      WHERE Symbol = @symbol
-    `;
-
-    const params: any = { symbol };
-
-    // Apply date filters
-    if (start_date) {
-      query += ` AND Timestamp >= @startDate`;
-      params.startDate = start_date;
-    }
-
-    if (end_date) {
-      query += ` AND Timestamp <= @endDate`;
-      params.endDate = end_date;
-    }
-
-    // Apply period filter
-    if (period === '1d') {
-      query += ` AND Timestamp >= DATEADD(day, -1, GETUTCDATE())`;
-    } else if (period === '1w') {
-      query += ` AND Timestamp >= DATEADD(week, -1, GETUTCDATE())`;
-    } else if (period === '1m') {
-      query += ` AND Timestamp >= DATEADD(month, -1, GETUTCDATE())`;
+    // Calculate days from period
+    let daysToFetch = 60; // default
+    if (days) {
+      daysToFetch = parseInt(days as string);
+    } else if (period === '1d') {
+      daysToFetch = 1;
+    } else if (period === '5d') {
+      daysToFetch = 5;
+    } else if (period === '1mo') {
+      daysToFetch = 30;
+    } else if (period === '3mo') {
+      daysToFetch = 90;
+    } else if (period === '6mo') {
+      daysToFetch = 180;
     } else if (period === '1y') {
-      query += ` AND Timestamp >= DATEADD(year, -1, GETUTCDATE())`;
+      daysToFetch = 365;
     }
 
-    query += ` ORDER BY Timestamp DESC`;
+    // Try database first (primary source)
+    try {
+      const dbData = await dataPipelineService.getMarketData(symbol, daysToFetch);
+      
+      if (dbData && dbData.length > 0) {
+        // Convert to API format
+        const formattedData = dbData.map(row => {
+          const dateValue = row.Date instanceof Date ? row.Date : new Date(row.Date);
+          return {
+            time: dateValue.toISOString().split('T')[0],
+            open: row.Open,
+            high: row.High,
+            low: row.Low,
+            close: row.Close,
+            volume: row.Volume,
+          };
+        });
 
-    const result = await executeQuery(query, params);
+        return successResponse(res, formattedData);
+      } else {
+        // Database returned empty - log for debugging
+        console.warn(`No data found in database for symbol ${symbol}. Available symbols:`, 
+          (await dataPipelineService.getAvailableSymbols()).slice(0, 10));
+      }
+    } catch (dbError) {
+      console.warn(`Database fetch failed for ${symbol}, trying fallback:`, dbError);
+      
+      // Log available symbols as suggestion
+      try {
+        const availableSymbols = await dataPipelineService.getAvailableSymbols();
+        if (availableSymbols.length > 0) {
+          console.warn(`Available symbols in database: ${availableSymbols.slice(0, 10).join(', ')}`);
+        }
+      } catch (e) {
+        // Ignore error getting available symbols
+      }
+    }
 
-    return successResponse(res, result.recordset);
+    // Fallback: Try chatbot API (yfinance)
+    try {
+      const chatbotUrl = process.env.CHATBOT_URL || 'http://localhost:8000';
+      const response = await fetch(
+        `${chatbotUrl}/v1/market/ohlc?symbol=${symbol}&period=${period}&interval=1d`
+      );
+
+      if (response.ok) {
+        const ohlcData = await response.json() as {
+          candles?: Array<{
+            t: number;
+            o: number;
+            h: number;
+            l: number;
+            c: number;
+            v?: number;
+          }>;
+        };
+        if (ohlcData.candles && ohlcData.candles.length > 0) {
+          const formattedData = ohlcData.candles.map((candle) => ({
+            time: new Date(candle.t * 1000).toISOString().split('T')[0],
+            open: candle.o,
+            high: candle.h,
+            low: candle.l,
+            close: candle.c,
+            volume: candle.v || 0,
+          }));
+
+          return successResponse(res, formattedData);
+        }
+      }
+    } catch (chatbotError) {
+      console.warn(`Chatbot API fallback failed for ${symbol}:`, chatbotError);
+    }
+
+    // No data available
+    return errorResponse(res, `No market data available for ${symbol}`, 404);
   } catch (error) {
     return errorResponse(res, 'Failed to fetch historical data', 500, error);
   }
@@ -118,42 +167,207 @@ router.get('/history/:symbol', authenticateToken, async (req: AuthRequest, res) 
 /**
  * GET /api/market-data/real-time/:symbol
  * Get real-time data for a symbol
+ * Primary: Database (latest record)
+ * Fallback: External APIs
  */
 router.get('/real-time/:symbol', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const { symbol } = req.params;
 
-    const query = `
-      SELECT TOP 1 
-        Symbol,
-        Timestamp,
-        Price,
-        Volume,
-        High,
-        Low,
-        Open,
-        PriceChange1m,
-        PriceChange5m,
-        PriceChange15m,
-        VolumeAvg1h,
-        Volatility1h,
-        RSI14,
-        SMA20,
-        SignalStrength
-      FROM MarketData
-      WHERE Symbol = @symbol
-      ORDER BY Timestamp DESC
-    `;
-
-    const result = await executeQuery(query, { symbol });
-
-    if (result.recordset.length === 0) {
-      return errorResponse(res, 'Symbol not found', 404);
+    // Try database first
+    try {
+      const latestPrice = await dataPipelineService.getLatestPrice(symbol);
+      
+      if (latestPrice !== null) {
+        // Get full latest record
+        const dbData = await dataPipelineService.getMarketData(symbol, 1);
+        if (dbData && dbData.length > 0) {
+          const latest = dbData[dbData.length - 1];
+          const dateValue = latest.Date instanceof Date ? latest.Date : new Date(latest.Date);
+          return successResponse(res, {
+            symbol: latest.Symbol,
+            price: latest.Close,
+            open: latest.Open,
+            high: latest.High,
+            low: latest.Low,
+            close: latest.Close,
+            volume: latest.Volume,
+            date: dateValue,
+            assetType: latest.AssetType || 'stock',
+          });
+        }
+      }
+    } catch (dbError) {
+      console.warn(`Database fetch failed for ${symbol}, trying fallback:`, dbError);
     }
 
-    return successResponse(res, result.recordset[0]);
+    // Fallback: Try chatbot API
+    try {
+      const chatbotUrl = process.env.CHATBOT_URL || 'http://localhost:8000';
+      const response = await fetch(`${chatbotUrl}/v1/market/quote?symbol=${symbol}`);
+
+      if (response.ok) {
+        const quoteData = await response.json() as any;
+        return successResponse(res, quoteData);
+      }
+    } catch (chatbotError) {
+      console.warn(`Chatbot API fallback failed for ${symbol}:`, chatbotError);
+    }
+
+    return errorResponse(res, `No data available for ${symbol}`, 404);
   } catch (error) {
     return errorResponse(res, 'Failed to fetch real-time data', 500, error);
+  }
+});
+
+/**
+ * POST /api/market-data/update-database
+ * Manually trigger database update from raw CSV files
+ * (Also runs automatically daily via scheduler)
+ */
+router.post('/update-database', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const result = await dataPipelineService.updateDatabaseFromRawFiles();
+    
+    const loadedSymbols = await dataPipelineService.getAvailableSymbols();
+    
+    return successResponse(res, {
+      message: 'Database update completed',
+      ...result,
+      loadedSymbols: loadedSymbols.slice(0, 50), // Return first 50 symbols as sample
+      totalSymbols: loadedSymbols.length,
+    });
+  } catch (error) {
+    return errorResponse(res, 'Failed to update database', 500, error);
+  }
+});
+
+/**
+ * POST /api/market-data/initialize
+ * Initialize database by loading CSV data from raw files
+ * Should be called on backend startup or manually triggered
+ */
+router.post('/initialize', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    console.log('Initializing database from raw CSV files...');
+    const result = await dataPipelineService.updateDatabaseFromRawFiles();
+    
+    const loadedSymbols = await dataPipelineService.getAvailableSymbols();
+    
+    return successResponse(res, {
+      message: 'Database initialization completed',
+      symbolsLoaded: loadedSymbols.length,
+      recordsLoaded: result.totalRecords,
+      ...result,
+    });
+  } catch (error) {
+    return errorResponse(res, 'Failed to initialize database', 500, error);
+  }
+});
+
+/**
+ * GET /api/market-data/data-status
+ * Check if market data has been loaded into database
+ */
+router.get('/data-status', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const symbols = await dataPipelineService.getAvailableSymbols();
+    
+    // Get asset type distribution
+    const assetTypes = new Set<string>();
+    for (const symbol of symbols) {
+      // Infer asset type from symbol pattern
+      if (symbol.includes('=X')) assetTypes.add('forex');
+      else if (symbol.includes('=F')) assetTypes.add('commodity');
+      else if (['BTC', 'ETH', 'ADA', 'DOT', 'LINK'].includes(symbol)) assetTypes.add('crypto');
+      else if (['SPY', 'QQQ', 'IWM'].includes(symbol)) assetTypes.add('etf');
+      else assetTypes.add('stock');
+    }
+    
+    return successResponse(res, {
+      hasData: symbols.length > 0,
+      symbolCount: symbols.length,
+      assetTypes: Array.from(assetTypes),
+      sampleSymbols: symbols.slice(0, 20),
+      lastUpdate: new Date().toISOString(), // Would track actual last update time
+    });
+  } catch (error) {
+    return errorResponse(res, 'Failed to check data status', 500, error);
+  }
+});
+
+/**
+ * GET /api/market-data/internal/history/:symbol
+ * Internal endpoint for service-to-service calls (no auth required)
+ * Used by RL training service to get market data
+ */
+router.get('/internal/history/:symbol', async (req, res) => {
+  try {
+    const { symbol } = req.params;
+    const { days = 60 } = req.query;
+    const daysToFetch = parseInt(days as string);
+
+    // Get data from data pipeline service
+    const dbData = await dataPipelineService.getMarketData(symbol, daysToFetch);
+    
+    if (dbData && dbData.length > 0) {
+      // Convert to DataFrame-like format for RL service
+      const formattedData = dbData.map(row => {
+        const dateValue = row.Date instanceof Date ? row.Date : new Date(row.Date);
+        return {
+          Date: dateValue.toISOString().split('T')[0],
+          Open: row.Open,
+          High: row.High,
+          Low: row.Low,
+          Close: row.Close,
+          Volume: row.Volume,
+          AssetType: row.AssetType || 'stock'
+        };
+      });
+
+      return successResponse(res, formattedData);
+    }
+    
+    return errorResponse(res, `No data found for symbol ${symbol}`, 404);
+  } catch (error) {
+    return errorResponse(res, 'Failed to fetch market data', 500, error);
+  }
+});
+
+/**
+ * GET /api/market-data/internal/available-symbols
+ * Internal endpoint for service-to-service calls (no auth required)
+ * Used by RL training service to get available symbols
+ */
+router.get('/internal/available-symbols', async (req, res) => {
+  try {
+    const { assetType } = req.query;
+    
+    const symbols = await dataPipelineService.getAvailableSymbols(
+      assetType as string | undefined
+    );
+    
+    return successResponse(res, symbols);
+  } catch (error) {
+    return errorResponse(res, 'Failed to fetch available symbols', 500, error);
+  }
+});
+
+/**
+ * GET /api/market-data/available-symbols
+ * Get all available symbols from database
+ */
+router.get('/available-symbols', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { assetType } = req.query;
+    
+    const symbols = await dataPipelineService.getAvailableSymbols(
+      assetType as string | undefined
+    );
+    
+    return successResponse(res, symbols);
+  } catch (error) {
+    return errorResponse(res, 'Failed to fetch available symbols', 500, error);
   }
 });
 

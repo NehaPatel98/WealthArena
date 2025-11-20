@@ -145,12 +145,23 @@ export default function PortfolioBuilderScreen() {
 
   const loadAssets = async () => {
     try {
-      const assets = await assetService.getAssets(
+      // Use cached asset service to fetch from database
+      const { cachedAssetService } = await import('@/services/cachedAssetService');
+      const assets = await cachedAssetService.getAssets(
         assetType === 'all' ? {} : { type: assetType }
       );
       setAvailableAssets(assets);
     } catch (error) {
       console.error('Error loading assets:', error);
+      // Fallback to assetService if cached service fails
+      try {
+        const assets = await assetService.getAssets(
+          assetType === 'all' ? {} : { type: assetType }
+        );
+        setAvailableAssets(assets);
+      } catch (fallbackError) {
+        console.error('Fallback asset loading also failed:', fallbackError);
+      }
     }
   };
 

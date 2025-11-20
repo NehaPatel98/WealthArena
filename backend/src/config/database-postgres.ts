@@ -21,7 +21,7 @@ function isGCP(): boolean {
 /**
  * Get database connection pool
  */
-export function getPool(): Pool {
+export async function getPool(): Promise<Pool> {
   if (!pool) {
     try {
       const isUnixSocket = isGCP();
@@ -57,6 +57,15 @@ export function getPool(): Pool {
         pool = null;
       });
       
+      // Validate password is not a placeholder
+      const password = process.env.DB_PASSWORD || '';
+      if (password === 'your-postgres-password' || password === 'your-sql-password' || !password) {
+        console.warn('WARNING: DB_PASSWORD appears to be a placeholder. Database connection may fail.');
+        console.warn('Please update backend/.env.local with your actual PostgreSQL password.');
+      }
+      
+      // Verify connectivity with a test query before logging success
+      await pool.query('SELECT 1');
       console.log('Connected to PostgreSQL Database');
     } catch (error) {
       console.error('ERROR: Failed to connect to database:', error);
@@ -77,7 +86,7 @@ export async function executeQuery<T extends QueryResultRow = any>(
 ): Promise<{ recordset: T[]; rowsAffected: number[] }> {
   const startTime = Date.now();
   try {
-    const pool = getPool();
+    const pool = await getPool();
     
     // Convert SQL Server parameter syntax (@paramName) to PostgreSQL ($1, $2, ...)
     let postgresQuery = query;
@@ -128,7 +137,7 @@ export async function executeProcedure<T extends QueryResultRow = any>(
 ): Promise<{ recordset: T[]; rowsAffected: number[] }> {
   const startTime = Date.now();
   try {
-    const pool = getPool();
+    const pool = await getPool();
     
     let paramValues: any[] = [];
     
@@ -169,7 +178,8 @@ export async function executeTransaction(
   queries: Array<{ query: string; params?: any[] }>
 ): Promise<void> {
   const startTime = Date.now();
-  const client: PoolClient = await getPool().connect();
+  const pool = await getPool();
+  const client: PoolClient = await pool.connect();
   
   try {
     await client.query('BEGIN');

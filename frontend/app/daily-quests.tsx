@@ -12,6 +12,7 @@ import {
   FAB,
   tokens 
 } from '@/src/design-system';
+import { apiService } from '@/services/apiService';
 
 // Calculate time remaining until end of day
 const getTimeRemaining = () => {
@@ -23,37 +24,27 @@ const getTimeRemaining = () => {
   return `${hours} hours`;
 };
 
-const QUESTS = [
-  {
-    id: '1',
-    icon: 'trophy',
-    title: 'Earn 80 coins',
-    subtitle: 'Complete lessons and challenges',
-    progress: 25,
-    target: 80,
-  },
-  {
-    id: '2',
-    icon: 'check-shield',
-    title: 'Answer 10 quizzes correctly',
-    subtitle: 'Every correct answer earns you a reward',
-    progress: 4,
-    target: 10,
-  },
-  {
-    id: '3',
-    icon: 'market',
-    title: 'Review 5 trade signals',
-    subtitle: 'Analyze market opportunities',
-    progress: 2,
-    target: 5,
-  },
-];
+interface Quest {
+  QuestID: number;
+  QuestCode?: string;
+  Title: string;
+  Subtitle?: string;
+  Description?: string;
+  IconName?: string;
+  QuestType: 'daily' | 'weekly' | 'monthly' | 'special';
+  TargetValue: number;
+  XPReward: number;
+  CoinReward: number;
+  CurrentProgress: number;
+  IsCompleted: boolean;
+}
 
 export default function DailyQuestsScreen() {
   const router = useRouter();
   const { theme } = useTheme();
   const [timeRemaining, setTimeRemaining] = useState(getTimeRemaining());
+  const [quests, setQuests] = useState<Quest[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -63,7 +54,32 @@ export default function DailyQuestsScreen() {
     return () => clearInterval(interval);
   }, []);
 
-  const totalProgress = QUESTS.reduce((sum, q) => sum + (q.progress / q.target), 0) / QUESTS.length * 100;
+  useEffect(() => {
+    const loadQuests = async () => {
+      try {
+        setIsLoading(true);
+        const response = await apiService.getUserQuests();
+        if (response.success && response.data) {
+          // Filter for daily quests only
+          const dailyQuests = response.data.filter((q: Quest) => q.QuestType === 'daily');
+          setQuests(dailyQuests);
+        } else {
+          setQuests([]);
+        }
+      } catch (error) {
+        console.error('Error loading quests:', error);
+        setQuests([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadQuests();
+  }, []);
+
+  const totalProgress = quests.length > 0 
+    ? quests.reduce((sum, q) => sum + ((q.CurrentProgress || 0) / q.TargetValue), 0) / quests.length * 100
+    : 0;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top']}>
@@ -100,53 +116,83 @@ export default function DailyQuestsScreen() {
         </Card>
 
         {/* Quest Cards */}
-        {QUESTS.map((quest) => {
-          const questProgress = (quest.progress / quest.target) * 100;
-          const isComplete = quest.progress >= quest.target;
-          
-          return (
-            <Card key={quest.id} style={styles.questCard}>
-              <View style={styles.questHeader}>
-                <View style={[
-                  styles.iconCircle, 
-                  { backgroundColor: isComplete ? theme.primary + '30' : theme.surface }
-                ]}>
-                  <Icon name={quest.icon as any} size={28} color={isComplete ? theme.primary : theme.text} />
+        {isLoading ? (
+          <Card style={styles.questCard}>
+            <Text variant="body" muted center>Loading quests...</Text>
+          </Card>
+        ) : quests.length === 0 ? (
+          <Card style={styles.questCard}>
+            <Text variant="body" muted center>No daily quests available</Text>
+            <Text variant="small" muted center style={{ marginTop: tokens.spacing.xs }}>
+              Check back later for new quests!
+            </Text>
+          </Card>
+        ) : (
+          quests.map((quest) => {
+            const questProgress = ((quest.CurrentProgress || 0) / quest.TargetValue) * 100;
+            const isComplete = (quest.CurrentProgress || 0) >= quest.TargetValue;
+            const iconName = quest.IconName || 'trophy';
+            
+            return (
+              <Card key={quest.QuestID} style={styles.questCard}>
+                <View style={styles.questHeader}>
+                  <View style={[
+                    styles.iconCircle, 
+                    { backgroundColor: isComplete ? theme.primary + '30' : theme.surface }
+                  ]}>
+                    <Icon name={iconName as any} size={28} color={isComplete ? theme.primary : theme.text} />
+                  </View>
+                  
+                  <View style={styles.questInfo}>
+                    <Text variant="body" weight="semibold">{quest.Title}</Text>
+                    <Text variant="small" muted>{quest.Subtitle || quest.Description || ''}</Text>
+                  </View>
                 </View>
-                
-                <View style={styles.questInfo}>
-                  <Text variant="body" weight="semibold">{quest.title}</Text>
-                  <Text variant="small" muted>{quest.subtitle}</Text>
-                </View>
-              </View>
 
-              {/* Progress Bar */}
-              <View style={styles.progressContainer}>
-                <View style={[styles.progressBar, { backgroundColor: theme.border }]}>
-                  <View 
-                    style={[
-                      styles.progressFill,
-                      { 
-                        backgroundColor: isComplete ? theme.primary : theme.accent,
-                        width: `${questProgress}%` 
-                      }
-                    ]} 
-                  />
+                {/* Progress Bar */}
+                <View style={styles.progressContainer}>
+                  <View style={[styles.progressBar, { backgroundColor: theme.border }]}>
+                    <View 
+                      style={[
+                        styles.progressFill,
+                        { 
+                          backgroundColor: isComplete ? theme.primary : theme.accent,
+                          width: `${questProgress}%` 
+                        }
+                      ]} 
+                    />
+                  </View>
+                  <Text variant="small" weight="semibold">
+                    {quest.CurrentProgress || 0}/{quest.TargetValue}
+                  </Text>
                 </View>
-                <Text variant="small" weight="semibold">
-                  {quest.progress}/{quest.target}
-                </Text>
-              </View>
 
-              {isComplete && (
-                <View style={styles.completeBadge}>
-                  <Icon name="check-shield" size={16} color={theme.primary} />
-                  <Text variant="xs" weight="semibold" color={theme.primary}>Complete</Text>
+                {/* Rewards */}
+                <View style={styles.rewardsContainer}>
+                  {quest.XPReward > 0 && (
+                    <View style={styles.rewardItem}>
+                      <Icon name="xp" size={16} color={theme.primary} />
+                      <Text variant="xs" muted>{quest.XPReward} XP</Text>
+                    </View>
+                  )}
+                  {quest.CoinReward > 0 && (
+                    <View style={styles.rewardItem}>
+                      <Icon name="coin" size={16} color={theme.yellow} />
+                      <Text variant="xs" muted>{quest.CoinReward} Coins</Text>
+                    </View>
+                  )}
                 </View>
-              )}
-            </Card>
-          );
-        })}
+
+                {isComplete && (
+                  <View style={styles.completeBadge}>
+                    <Icon name="check-shield" size={16} color={theme.primary} />
+                    <Text variant="xs" weight="semibold" color={theme.primary}>Complete</Text>
+                  </View>
+                )}
+              </Card>
+            );
+          })
+        )}
 
         {/* Info Card */}
         <Card style={[styles.infoCard, { backgroundColor: theme.surface + 'CC' }]}>
@@ -295,5 +341,15 @@ const styles = StyleSheet.create({
   infoText: {
     flex: 1,
     lineHeight: 18,
+  },
+  rewardsContainer: {
+    flexDirection: 'row',
+    gap: tokens.spacing.md,
+    marginTop: tokens.spacing.xs,
+  },
+  rewardItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.xs,
   },
 });

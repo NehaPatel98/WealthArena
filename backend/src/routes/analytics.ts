@@ -10,6 +10,26 @@ import { successResponse, errorResponse } from '../utils/responses';
 
 const router = express.Router();
 
+// Type definitions for analytics results
+interface PortfolioData {
+  id?: number;
+  TotalInvested?: number;
+  TotalValue?: number;
+  TotalReturn?: number;
+  SharpeRatio?: number;
+  MaxDrawdown?: number;
+}
+
+interface TradingMetrics {
+  total_trades?: number;
+  winning_trades?: number;
+  losing_trades?: number;
+  avg_win?: number;
+  avg_loss?: number;
+  total_wins?: number;
+  total_losses?: number;
+}
+
 /**
  * POST /api/analytics/onboarding
  * Track onboarding analytics events
@@ -197,7 +217,7 @@ router.get('/performance', authenticateToken, async (req: AuthRequest, res) => {
       return errorResponse(res, 'No portfolio found', 404);
     }
 
-    const portfolioIdValue = portfolioResult.recordset[0].id;
+    const portfolioIdValue = (portfolioResult.recordset[0] as PortfolioData).id;
 
     // Calculate date range based on timeframe
     let dateFilter = '';
@@ -229,7 +249,7 @@ router.get('/performance', authenticateToken, async (req: AuthRequest, res) => {
       WHERE PortfolioID = @portfolioIdValue
     `;
     const portfolioOverview = await executeQuery(portfolioOverviewQuery, { portfolioIdValue });
-    const portfolioData = portfolioOverview.recordset[0] || {};
+    const portfolioData = (portfolioOverview.recordset[0] as PortfolioData) || {} as PortfolioData;
 
     // Get time-series performance history
     const performanceHistoryQuery = `
@@ -296,18 +316,23 @@ router.get('/performance', authenticateToken, async (req: AuthRequest, res) => {
         AND trade_date >= ${dateFilter}
     `;
     const tradingMetricsResult = await executeQuery(tradingMetricsQuery, { portfolioIdValue });
-    const metrics = tradingMetricsResult.recordset[0] || {};
+    const metrics = (tradingMetricsResult.recordset[0] as TradingMetrics) || {} as TradingMetrics;
 
     // Calculate additional metrics
     const avgWin = metrics.avg_win || 0;
     const avgLoss = metrics.avg_loss || 0;
-    const profitFactor = metrics.total_losses > 0 ? (metrics.total_wins / metrics.total_losses) : 0;
-    const winRate = metrics.total_trades > 0 ? ((metrics.winning_trades / metrics.total_trades) * 100) : 0;
+    const totalLosses = metrics.total_losses || 0;
+    const totalWins = metrics.total_wins || 0;
+    const totalTrades = metrics.total_trades || 0;
+    const winningTrades = metrics.winning_trades || 0;
+    const profitFactor = totalLosses > 0 ? (totalWins / totalLosses) : 0;
+    const winRate = totalTrades > 0 ? ((winningTrades / totalTrades) * 100) : 0;
 
     // Calculate portfolio-level metrics
     const totalReturn = portfolioData.TotalReturn || 0;
-    const totalReturnPercent = portfolioData.TotalInvested > 0 
-      ? ((portfolioData.TotalReturn / portfolioData.TotalInvested) * 100) 
+    const totalInvested = portfolioData.TotalInvested || 0;
+    const totalReturnPercent = totalInvested > 0 
+      ? ((totalReturn / totalInvested) * 100) 
       : 0;
     
     const result = {

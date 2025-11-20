@@ -94,12 +94,29 @@ export default function OpportunitiesScreen() {
             <Text variant="h1" weight="bold" style={styles.totalValue}>
               ${portfolioData.totalValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </Text>
-            <View style={styles.changeRow}>
-              <Icon name="market" size={20} color={theme.primary} />
-              <Text variant="body" color={theme.primary} weight="semibold">
-                +${(portfolioData.totalValue * portfolioData.totalChange / 100).toFixed(2)} ({portfolioData.totalChange}%)
+            {portfolioData.totalChange !== 0 && (
+              <View style={styles.changeRow}>
+                <Icon 
+                  name={portfolioData.totalChange > 0 ? "market" : "signal"} 
+                  size={20} 
+                  color={portfolioData.totalChange > 0 ? theme.primary : theme.danger} 
+                />
+                <Text 
+                  variant="body" 
+                  color={portfolioData.totalChange > 0 ? theme.primary : theme.danger} 
+                  weight="semibold"
+                >
+                  {portfolioData.totalChange > 0 ? '+' : ''}
+                  ${(Math.abs(portfolioData.totalValue * portfolioData.totalChange / 100)).toFixed(2)} 
+                  ({portfolioData.totalChange > 0 ? '+' : ''}{portfolioData.totalChange.toFixed(2)}%)
+                </Text>
+              </View>
+            )}
+            {portfolioData.items.length === 0 && (
+              <Text variant="small" muted style={{ marginTop: tokens.spacing.sm }}>
+                No holdings yet. Build your portfolio to get started!
               </Text>
-            </View>
+            )}
           </Card>
         )}
 
@@ -144,7 +161,28 @@ export default function OpportunitiesScreen() {
               <Text variant="small" muted center>Loading holdings...</Text>
             </Card>
           )}
-          {!isLoading && portfolioData?.items.map((item) => (
+          {!isLoading && portfolioData && portfolioData.items.length === 0 && (
+            <Card style={styles.holdingCard}>
+              <View style={styles.emptyHoldingsContainer}>
+                <Icon name="portfolio" size={48} color={theme.muted} />
+                <Text variant="body" muted center style={{ marginTop: tokens.spacing.sm }}>
+                  No holdings yet
+                </Text>
+                <Text variant="small" muted center style={{ marginTop: tokens.spacing.xs }}>
+                  Start building your portfolio to see your holdings here
+                </Text>
+                <Button 
+                  variant="primary" 
+                  size="small"
+                  onPress={() => router.push('/portfolio-builder')}
+                  style={{ marginTop: tokens.spacing.md }}
+                >
+                  Build Portfolio
+                </Button>
+              </View>
+            </Card>
+          )}
+          {!isLoading && portfolioData && portfolioData.items.length > 0 && portfolioData.items.map((item) => (
             <Pressable key={item.symbol} onPress={() => router.push(`/trade-detail?symbol=${item.symbol}`)}>
               <Card style={styles.holdingCard}>
                 <View style={styles.holdingLeft}>
@@ -345,5 +383,10 @@ const styles = StyleSheet.create({
   analyticsNote: {
     textAlign: 'center',
     marginTop: tokens.spacing.xs,
+  },
+  emptyHoldingsContainer: {
+    padding: tokens.spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

@@ -4,7 +4,9 @@
  */
 
 import express from 'express';
-import authRoutes from './auth';
+// Use mock auth routes for local development (in-memory database)
+// For production, switch to './auth' for real database
+import authRoutes from './auth-mock';
 import signalsRoutes from './signals';
 import portfolioRoutes from './portfolio';
 import userRoutes from './user';

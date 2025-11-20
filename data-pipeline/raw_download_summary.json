@@ -1,6 +1,6 @@
 {
-  "download_date": "2025-11-04T21:14:15.149447",
-  "num_symbols": 97,
+  "download_date": "2025-11-13T10:41:31.795568",
+  "num_symbols": 96,
   "date_range": {
     "start": "2022-01-01",
     "end": "2025-01-01"
@@ -75,7 +75,6 @@
     "ALV.AX",
     "ALY.AX",
     "AMA.AX",
-    "AMH.AX",
     "AMN.AX",
     "AMO.AX",
     "AMX.AX",

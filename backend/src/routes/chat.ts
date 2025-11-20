@@ -10,6 +10,15 @@ import { successResponse, errorResponse } from '../utils/responses';
 
 const router = express.Router();
 
+// Type definitions for chat results
+interface ChatSessionResult {
+  SessionID: number;
+}
+
+interface ChatMessageResult {
+  MessageID: number;
+}
+
 /**
  * POST /api/chat/session
  * Get or create chat session
@@ -25,7 +34,7 @@ router.post('/session', authenticateToken, async (req: AuthRequest, res) => {
     });
 
     return successResponse(res, {
-      sessionId: result.recordset[0].SessionID,
+      sessionId: (result.recordset[0] as ChatSessionResult).SessionID,
     });
   } catch (error) {
     return errorResponse(res, 'Failed to create chat session', 500, error);
@@ -87,7 +96,7 @@ router.post('/message', authenticateToken, async (req: AuthRequest, res) => {
     });
 
     return successResponse(res, {
-      messageId: result.recordset[0].MessageID,
+      messageId: (result.recordset[0] as ChatMessageResult).MessageID,
     });
   } catch (error) {
     return errorResponse(res, 'Failed to save message', 500, error);

@@ -19,7 +19,7 @@ import LeaderboardCard from '../../components/LeaderboardCard';
 import { getTopPerformers } from '../../data/leaderboardData';
 import { useUser } from '@/contexts/UserContext';
 import { useLeaderboard } from '@/contexts/LeaderboardContext';
-import { getActiveSessions, getGameHistory, discardGameSession } from '@/services/apiService';
+import { getActiveSessions, getGameHistory, discardGameSession, apiService } from '@/services/apiService';
 
 const { width } = Dimensions.get('window');
 
@@ -41,6 +41,10 @@ export default function GameScreen() {
   const [activeSessions, setActiveSessions] = useState<any[]>([]);
   const [gameHistory, setGameHistory] = useState<any[]>([]);
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
+  const [achievements, setAchievements] = useState<any[]>([]);
+  const [weeklyChallenge, setWeeklyChallenge] = useState<any>(null);
+  const [isLoadingAchievements, setIsLoadingAchievements] = useState(false);
+  const [isLoadingChallenge, setIsLoadingChallenge] = useState(false);
 
   const userLevel = user?.current_level || 12;
   const currentXP = user?.xp_points || 2450;
@@ -68,6 +72,92 @@ export default function GameScreen() {
     };
 
     loadGameData();
+  }, [user?.user_id]);
+
+  // Load achievements
+  useEffect(() => {
+    const loadAchievements = async () => {
+      if (!user?.user_id) return;
+
+      setIsLoadingAchievements(true);
+      try {
+        const response = await apiService.getAchievements();
+        if (response.success && response.data) {
+          // Filter for recently unlocked achievements and map to UI format
+          const recentAchievements = (response.data as any[])
+            .filter((ach: any) => ach.unlocked_at || ach.isUnlocked)
+            .sort((a: any, b: any) => {
+              const dateA = new Date(a.unlocked_at || a.unlockedAt || 0).getTime();
+              const dateB = new Date(b.unlocked_at || b.unlockedAt || 0).getTime();
+              return dateB - dateA;
+            })
+            .slice(0, 5)
+            .map((ach: any) => {
+              // Map backend achievement to UI format
+              const iconMap: Record<string, string> = {
+                'perfect_trade': 'target',
+                'risk_master': 'shield',
+                'chart_expert': 'trending-up',
+                'streak_master': 'lightning-bolt',
+                'portfolio_builder': 'layers',
+              };
+              
+              return {
+                id: ach.achievement_id || ach.id,
+                title: ach.achievement_name || ach.name || 'Achievement',
+                xp: ach.xp_reward || ach.xpReward || 50,
+                description: ach.description || 'Great achievement!',
+                icon: iconMap[ach.achievement_type || ach.type] || 'trophy',
+                color: '#4A90E2',
+                gradient: ['#4A90E2', '#357ABD'],
+              };
+            });
+          
+          setAchievements(recentAchievements);
+        }
+      } catch (error) {
+        console.error('Failed to load achievements:', error);
+      } finally {
+        setIsLoadingAchievements(false);
+      }
+    };
+
+    loadAchievements();
+  }, [user?.user_id]);
+
+  // Load weekly challenge
+  useEffect(() => {
+    const loadWeeklyChallenge = async () => {
+      if (!user?.user_id) return;
+
+      setIsLoadingChallenge(true);
+      try {
+        const response = await apiService.getQuests();
+        if (response.success && response.data) {
+          // Filter for weekly challenges
+          const weeklyQuests = (response.data as any[]).filter(
+            (q: any) => q.quest_type === 'weekly' || q.type === 'weekly' || q.frequency === 'weekly'
+          );
+          
+          if (weeklyQuests.length > 0) {
+            const challenge = weeklyQuests[0];
+            setWeeklyChallenge({
+              title: challenge.quest_name || challenge.name || 'Weekly Challenge',
+              description: challenge.description || 'Complete this week\'s challenge',
+              current: challenge.current_progress || challenge.currentProgress || 0,
+              target: challenge.target_progress || challenge.targetProgress || 10,
+              reward: challenge.reward || '500 XP + Rare Badge',
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load weekly challenge:', error);
+      } finally {
+        setIsLoadingChallenge(false);
+      }
+    };
+
+    loadWeeklyChallenge();
   }, [user?.user_id]);
 
   const handleDiscardSession = async (sessionId: string) => {
@@ -324,58 +414,17 @@ export default function GameScreen() {
             </View>
           </View>
 
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.achievementScroll}
-          >
-            {[
-              { 
-                id: 'perfect-trade',
-                title: 'Perfect Trade', 
-                xp: 50, 
-                description: 'Executed a trade with perfect timing',
-                icon: 'target',
-                color: '#00FF6A',
-                gradient: ['#00FF6A', '#00CC55']
-              },
-              { 
-                id: 'risk-master',
-                title: 'Risk Master', 
-                xp: 75, 
-                description: 'Managed risk like a pro',
-                icon: 'shield',
-                color: '#FF6B35',
-                gradient: ['#FF6B35', '#FF8C42']
-              },
-              { 
-                id: 'chart-expert',
-                title: 'Chart Expert', 
-                xp: 100, 
-                description: 'Mastered technical analysis',
-                icon: 'trending-up',
-                color: '#4A90E2',
-                gradient: ['#4A90E2', '#357ABD']
-              },
-              { 
-                id: 'streak-master',
-                title: 'Streak Master', 
-                xp: 150, 
-                description: 'Maintained a 10-day winning streak',
-                icon: 'lightning-bolt',
-                color: '#FFD700',
-                gradient: ['#FFD700', '#FFA500']
-              },
-              { 
-                id: 'portfolio-builder',
-                title: 'Portfolio Builder', 
-                xp: 200, 
-                description: 'Built a diversified portfolio',
-                icon: 'layers',
-                color: '#9B59B6',
-                gradient: ['#9B59B6', '#8E44AD']
-              },
-            ].map((achievement) => (
+          {isLoadingAchievements ? (
+            <View style={styles.loadingContainer}>
+              <Text variant="small" muted>Loading achievements...</Text>
+            </View>
+          ) : achievements.length > 0 ? (
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.achievementScroll}
+            >
+              {achievements.map((achievement) => (
               <Card key={`achievement-${achievement.id}`} style={styles.achievementCard} elevation="low">
                 <LinearGradient
                   colors={achievement.gradient as [string, string]}
@@ -397,8 +446,13 @@ export default function GameScreen() {
                 </Text>
                 <Badge variant="warning" size="small">+{achievement.xp} XP</Badge>
               </Card>
-            ))}
-          </ScrollView>
+              ))}
+            </ScrollView>
+          ) : (
+            <View style={styles.loadingContainer}>
+              <Text variant="small" muted>No achievements yet. Start playing to unlock achievements!</Text>
+            </View>
+          )}
         </Card>
 
         {/* Recent Games */}
@@ -446,31 +500,42 @@ export default function GameScreen() {
         )}
 
         {/* Challenge of the Week */}
-        <Card style={styles.card} elevation="med">
-          <View style={styles.challengeContent}>
-            <View style={[styles.iconCircle, { backgroundColor: theme.accent + '20' }]}>
-              <Ionicons name="flame" size={28} color={theme.accent} />
+        {isLoadingChallenge ? (
+          <Card style={styles.card} elevation="med">
+            <View style={styles.loadingContainer}>
+              <Text variant="small" muted>Loading weekly challenge...</Text>
             </View>
-            <View style={styles.challengeText}>
-              <Text variant="h3" weight="semibold">Weekly Challenge</Text>
-              <Text variant="small" muted>Execute 10 profitable trades</Text>
-              <View style={styles.progressRow}>
-                <View style={[styles.miniProgressBar, { backgroundColor: theme.border }]}>
-                  <View 
-                    style={[
-                      styles.miniProgressFill, 
-                      { backgroundColor: theme.accent, width: '60%' }
-                    ]} 
-                  />
+          </Card>
+        ) : weeklyChallenge ? (
+          <Card style={styles.card} elevation="med">
+            <View style={styles.challengeContent}>
+              <View style={[styles.iconCircle, { backgroundColor: theme.accent + '20' }]}>
+                <Ionicons name="flame" size={28} color={theme.accent} />
+              </View>
+              <View style={styles.challengeText}>
+                <Text variant="h3" weight="semibold">{weeklyChallenge.title}</Text>
+                <Text variant="small" muted>{weeklyChallenge.description}</Text>
+                <View style={styles.progressRow}>
+                  <View style={[styles.miniProgressBar, { backgroundColor: theme.border }]}>
+                    <View 
+                      style={[
+                        styles.miniProgressFill, 
+                        { 
+                          backgroundColor: theme.accent, 
+                          width: `${Math.min(100, (weeklyChallenge.current / weeklyChallenge.target) * 100)}%` 
+                        }
+                      ]} 
+                    />
+                  </View>
+                  <Text variant="xs" muted>{weeklyChallenge.current}/{weeklyChallenge.target}</Text>
                 </View>
-                <Text variant="xs" muted>6/10</Text>
               </View>
             </View>
-          </View>
-          <Text variant="xs" muted style={styles.challengeReward}>
-            Reward: 500 XP + Rare Badge
-          </Text>
-        </Card>
+            <Text variant="xs" muted style={styles.challengeReward}>
+              Reward: {weeklyChallenge.reward}
+            </Text>
+          </Card>
+        ) : null}
 
         {/* Bottom Spacing */}
         <View style={{ height: 80 }} />

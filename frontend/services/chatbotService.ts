@@ -1,8 +1,11 @@
 /**
  * Chatbot Service
- * Handles communication with the WealthArena Chatbot API
+ * Handles communication with the WealthArena Chatbot API via backend proxy
  */
 
+import { API_CONFIG } from '@/config/apiConfig';
+
+const BACKEND_BASE_URL = API_CONFIG.BACKEND_BASE_URL;
 const CHATBOT_API_URL = process.env.EXPO_PUBLIC_CHATBOT_API_URL || 
   (__DEV__ ? 'http://localhost:8000' : 'https://wealtharena-chatbot-5224.azurewebsites.net');
 
@@ -45,17 +48,21 @@ export interface PriceResponse {
 
 class ChatbotService {
   private readonly baseUrl: string;
+  private readonly backendUrl: string;
 
   constructor() {
     this.baseUrl = CHATBOT_API_URL;
+    this.backendUrl = BACKEND_BASE_URL;
   }
 
   /**
    * Send a chat message to the AI assistant
+   * Uses backend proxy route to avoid CORS issues
    */
   async chat(message: string, context?: string): Promise<ChatResponse> {
     try {
-      const response = await fetch(`${this.baseUrl}/v1/chat`, {
+      // Use backend proxy route instead of calling chatbot directly
+      const response = await fetch(`${BACKEND_BASE_URL}/api/chatbot/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -67,13 +74,18 @@ class ChatbotService {
       });
 
       if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
         if (response.status === 404) {
           throw new Error('Chatbot service not available. Please check if the service is running.');
         }
-        throw new Error(`Chatbot API error: ${response.status} ${response.statusText}`);
+        throw new Error(errorData.message || `Chatbot API error: ${response.status} ${response.statusText}`);
       }
 
       const data = await response.json();
+      // Backend wraps the response in { success: true, data: {...} }
+      if (data.success && data.data) {
+        return data.data;
+      }
       return data;
     } catch (error) {
       console.error('Error calling chatbot API:', error);
@@ -180,19 +192,55 @@ class ChatbotService {
 
   /**
    * Health check
+   * Uses backend proxy route to avoid CORS and network issues
    */
   async healthCheck(): Promise<boolean> {
     try {
-      const response = await fetch(`${this.baseUrl}/v1/healthz`);
-      return response.ok;
-    } catch (error) {
-      console.error('Chatbot API health check failed:', error);
+      // Use backend proxy route instead of calling chatbot directly
+      // This avoids CORS issues and ensures we're using the correct network configuration
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+      
+      try {
+        const response = await fetch(`${this.backendUrl}/api/chatbot/health`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          signal: controller.signal,
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+          console.warn(`Chatbot health check returned status ${response.status}`);
+          return false;
+        }
+        
+        const data = await response.json().catch(() => null);
+        // Backend returns { success: true, status: 'healthy' } or { success: false, status: 'unhealthy' }
+        return data?.success === true || data?.status === 'healthy';
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId);
+        throw fetchError;
+      }
+    } catch (error: any) {
+      // Handle timeout and network errors gracefully
+      if (error?.name === 'AbortError' || error?.message?.includes('aborted')) {
+        console.warn('Chatbot health check timed out after 5 seconds');
+      } else if (error?.message?.includes('Network request failed')) {
+        console.warn('Chatbot health check failed: Network request failed - check backend URL configuration');
+        console.warn(`Backend URL being used: ${this.backendUrl}`);
+      } else {
+        console.error('Chatbot API health check failed:', error);
+      }
       return false;
     }
   }
 
   /**
    * Start onboarding session
+   * Uses backend proxy route
    */
   async startOnboarding(userData: { firstName: string; email: string; userId: number }): Promise<{
     success: boolean;
@@ -202,7 +250,7 @@ class ChatbotService {
     error?: string;
   }> {
     try {
-      const response = await fetch(`${this.baseUrl}/v1/onboarding/start`, {
+      const response = await fetch(`${this.backendUrl}/api/chatbot/onboarding/start`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -215,16 +263,21 @@ class ChatbotService {
       });
 
       if (!response.ok) {
-        throw new Error(`Onboarding start failed: ${response.status} ${response.statusText}`);
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `Onboarding start failed: ${response.status} ${response.statusText}`);
       }
 
       const data = await response.json();
-      return {
-        success: true,
-        sessionId: data.sessionId,
-        welcomeMessage: data.welcomeMessage,
-        estimatedQuestions: data.estimatedQuestions,
-      };
+      // Backend wraps the response in { success: true, ... }
+      if (data.success) {
+        return {
+          success: true,
+          sessionId: data.sessionId,
+          welcomeMessage: data.welcomeMessage,
+          estimatedQuestions: data.estimatedQuestions,
+        };
+      }
+      return data;
     } catch (error) {
       console.error('Error starting onboarding:', error);
       return {
@@ -236,6 +289,7 @@ class ChatbotService {
 
   /**
    * Send onboarding response and get next question
+   * Uses backend proxy route
    */
   async sendOnboardingResponse(
     answer: string | string[],
@@ -259,7 +313,7 @@ class ChatbotService {
     error?: string;
   }> {
     try {
-      const response = await fetch(`${this.baseUrl}/v1/onboarding/respond`, {
+      const response = await fetch(`${this.backendUrl}/api/chatbot/onboarding/respond`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -273,17 +327,22 @@ class ChatbotService {
       });
 
       if (!response.ok) {
-        throw new Error(`Onboarding response failed: ${response.status} ${response.statusText}`);
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `Onboarding response failed: ${response.status} ${response.statusText}`);
       }
 
       const data = await response.json();
-      return {
-        success: true,
-        nextQuestion: data.nextQuestion,
-        estimatedRemaining: data.estimatedRemaining,
-        profileUpdates: data.profileUpdates,
-        complete: data.complete,
-      };
+      // Backend wraps the response in { success: true, ... }
+      if (data.success) {
+        return {
+          success: true,
+          nextQuestion: data.nextQuestion,
+          estimatedRemaining: data.estimatedRemaining,
+          profileUpdates: data.profileUpdates,
+          complete: data.complete,
+        };
+      }
+      return data;
     } catch (error) {
       console.error('Error sending onboarding response:', error);
       return {
@@ -295,6 +354,7 @@ class ChatbotService {
 
   /**
    * Complete onboarding and get final profile
+   * Uses backend proxy route
    */
   async completeOnboarding(data: {
     sessionId: string;
@@ -309,7 +369,7 @@ class ChatbotService {
     error?: string;
   }> {
     try {
-      const response = await fetch(`${this.baseUrl}/v1/onboarding/complete`, {
+      const response = await fetch(`${this.backendUrl}/api/chatbot/onboarding/complete`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -318,16 +378,21 @@ class ChatbotService {
       });
 
       if (!response.ok) {
-        throw new Error(`Onboarding completion failed: ${response.status} ${response.statusText}`);
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `Onboarding completion failed: ${response.status} ${response.statusText}`);
       }
 
       const result = await response.json();
-      return {
-        success: true,
-        completionMessage: result.completionMessage,
-        finalProfile: result.finalProfile,
-        rewards: result.rewards,
-      };
+      // Backend wraps the response in { success: true, ... }
+      if (result.success) {
+        return {
+          success: true,
+          completionMessage: result.completionMessage,
+          finalProfile: result.finalProfile,
+          rewards: result.rewards,
+        };
+      }
+      return result;
     } catch (error) {
       console.error('Error completing onboarding:', error);
       return {

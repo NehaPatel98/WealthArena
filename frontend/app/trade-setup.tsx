@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView, Pressable } from 'react-native';
-import { useRouter, Stack } from 'expo-router';
+import React, { useState, useEffect } from 'react';
+import { View, StyleSheet, ScrollView, Pressable, ActivityIndicator, Alert } from 'react-native';
+import { useRouter, Stack, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme, Text, Card, Button, TextInput, Icon, Badge, tokens, FAB } from '@/src/design-system';
 import { AITradingSignal } from '../types/ai-signal';
+import { rlAgentService } from '../services/rlAgentService';
+import { marketDataService } from '../services/marketDataService';
 
 // Mock AI Signal for demonstration (in production, this would come from params or API)
 const MOCK_SIGNAL: AITradingSignal = {
@@ -101,17 +103,248 @@ const MOCK_SIGNAL: AITradingSignal = {
   }
 };
 
+// Helper function to convert RL prediction to AITradingSignal format
+function convertRLPredictionToSignal(prediction: any, symbol: string): AITradingSignal {
+  const entryPrice = prediction.entry?.price || prediction.current_price || 100;
+  const takeProfit = prediction.take_profit || [];
+  const stopLossData = prediction.stop_loss || {};
+  
+  return {
+    symbol: symbol,
+    prediction_date: prediction.timestamp || new Date().toISOString(),
+    asset_type: prediction.asset_type || 'stock',
+    trading_signal: {
+      signal: prediction.signal || 'HOLD',
+      confidence: prediction.confidence || 0.5,
+      model_version: prediction.model_version || 'v2.3.1'
+    },
+    entry_strategy: {
+      price: entryPrice,
+      price_range: prediction.entry?.price_range || [entryPrice * 0.99, entryPrice * 1.01],
+      timing: prediction.entry?.timing || 'immediate',
+      reasoning: prediction.reasoning || prediction.entry?.reasoning || 'AI-generated signal'
+    },
+    take_profit_levels: takeProfit.map((tp: any, index: number) => ({
+      level: index + 1,
+      price: tp.price || tp,
+      percent_gain: tp.percent_gain || ((tp.price || tp) / entryPrice - 1) * 100,
+      close_percent: tp.close_percent || [50, 30, 20][index] || 50,
+      probability: tp.probability || 0.7,
+      reasoning: tp.reasoning || `Take profit level ${index + 1}`
+    })),
+    stop_loss: {
+      price: stopLossData.price || entryPrice * 0.95,
+      percent_loss: stopLossData.percent_loss || ((stopLossData.price || entryPrice * 0.95) / entryPrice - 1) * 100,
+      type: stopLossData.type || 'fixed',
+      trail_amount: stopLossData.trail_amount,
+      reasoning: stopLossData.reasoning || 'Stop loss level'
+    },
+    risk_management: {
+      risk_reward_ratio: prediction.risk_metrics?.risk_reward_ratio || 2.0,
+      max_risk_per_share: Math.abs(entryPrice - (stopLossData.price || entryPrice * 0.95)),
+      max_reward_per_share: takeProfit.length > 0 ? Math.abs((takeProfit[0].price || takeProfit[0]) - entryPrice) : entryPrice * 0.05,
+      win_probability: prediction.risk_metrics?.win_probability || 0.6,
+      expected_value: prediction.risk_metrics?.expected_value || 0
+    },
+    position_sizing: {
+      recommended_percent: prediction.position_sizing?.recommended_percent || 5.0,
+      dollar_amount: prediction.position_sizing?.dollar_amount || 5000,
+      shares: prediction.position_sizing?.shares || Math.floor(5000 / entryPrice),
+      max_loss: prediction.position_sizing?.max_loss || 250,
+      method: prediction.position_sizing?.method || 'Kelly Criterion',
+      kelly_fraction: prediction.position_sizing?.kelly_fraction,
+      volatility_adjusted: prediction.position_sizing?.volatility_adjusted || true
+    },
+    model_metadata: {
+      model_type: 'Multi-Agent RL',
+      agents_used: ['TradingAgent', 'RiskAgent', 'PortfolioAgent'],
+      training_date: new Date().toISOString().split('T')[0],
+      backtest_sharpe: 1.95,
+      feature_importance: {}
+    },
+    indicators_state: {
+      rsi: { value: prediction.indicators?.rsi || 50, status: 'neutral' },
+      macd: { value: prediction.indicators?.macd || 0, status: 'neutral' },
+      atr: { value: prediction.indicators?.atr || 2, status: 'medium_volatility' },
+      volume: { value: prediction.indicators?.volume_ratio || 1, status: 'average' },
+      trend: { direction: prediction.signal === 'BUY' ? 'up' : 'down', strength: 'medium' }
+    }
+  };
+}
+
 export default function TradeSetupScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const { theme } = useTheme();
   
-  // Use mock signal for now (in production, would get from params/API)
-  const [signal] = useState<AITradingSignal>(MOCK_SIGNAL);
+  const [symbol, setSymbol] = useState<string>('');
+  const [signal, setSignal] = useState<AITradingSignal>(MOCK_SIGNAL);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingSymbol, setIsLoadingSymbol] = useState(true);
   const [orderType, setOrderType] = useState('market');
-  const [quantity, setQuantity] = useState(signal.position_sizing.shares.toString());
-  const [limitPrice, setLimitPrice] = useState(signal.entry_strategy.price.toString());
-  const [stopLoss, setStopLoss] = useState(signal.stop_loss.price.toString());
+  const [quantity, setQuantity] = useState('0');
+  const [limitPrice, setLimitPrice] = useState('0');
+  const [stopLoss, setStopLoss] = useState('0');
   const [selectedTpLevel, setSelectedTpLevel] = useState(0);
+
+  // First, get a real symbol from the dataset
+  useEffect(() => {
+    const loadSymbol = async () => {
+      setIsLoadingSymbol(true);
+      try {
+        // Get symbol from params if provided
+        const paramSymbol = params.symbol as string;
+        if (paramSymbol) {
+          setSymbol(paramSymbol);
+          setIsLoadingSymbol(false);
+          return;
+        }
+
+        // Otherwise, fetch available symbols from backend and use the first one
+        const availableSymbols = await marketDataService.getAvailableSymbols();
+        
+        if (availableSymbols && availableSymbols.length > 0) {
+          // Use the first available symbol
+          const firstSymbol = availableSymbols[0];
+          console.log(`Using real symbol from dataset: ${firstSymbol} (${availableSymbols.length} symbols available)`);
+          setSymbol(firstSymbol);
+        } else {
+          // Fallback to a default (but this shouldn't happen if data is loaded)
+          console.warn('No symbols available in dataset, using fallback');
+          setSymbol('14D.AX'); // Default to an Australian stock format
+        }
+      } catch (error) {
+        console.error('Error loading available symbols:', error);
+        // Fallback symbol
+        setSymbol('14D.AX');
+      } finally {
+        setIsLoadingSymbol(false);
+      }
+    };
+
+    loadSymbol();
+  }, [params.symbol]);
+
+  // Fetch real prediction data once we have a symbol
+  useEffect(() => {
+    if (!symbol || isLoadingSymbol) return;
+
+    const fetchPrediction = async () => {
+      setIsLoading(true);
+      try {
+        console.log(`Fetching prediction for ${symbol}...`);
+        const prediction = await rlAgentService.getPrediction(symbol, 1);
+        
+        // Check if we got a real prediction or fallback
+        if (prediction.symbol && prediction.symbol !== symbol) {
+          console.warn(`Prediction returned different symbol: ${prediction.symbol} vs ${symbol}`);
+        }
+        
+        const convertedSignal = convertRLPredictionToSignal(prediction, symbol);
+        setSignal(convertedSignal);
+        setQuantity(convertedSignal.position_sizing.shares.toString());
+        setLimitPrice(convertedSignal.entry_strategy.price.toString());
+        setStopLoss(convertedSignal.stop_loss.price.toString());
+        
+        console.log(`✓ Successfully loaded prediction for ${symbol}`);
+      } catch (error: any) {
+        console.error(`Error fetching prediction for ${symbol}:`, error);
+        
+        // Try to get data from backend directly as fallback
+        try {
+          const backendUrl = await import('../utils/networkConfig').then(m => m.resolveBackendURL(3000));
+          const { getAuthHeaders } = await import('../services/apiService');
+          const response = await fetch(
+            `${await backendUrl}/api/market-data/history/${symbol}?days=60`,
+            { headers: await getAuthHeaders() }
+          );
+          
+          if (response.ok) {
+            const result = await response.json();
+            if (result.success && result.data && result.data.length > 0) {
+              // Use the latest price from backend data
+              const latestData = result.data[result.data.length - 1];
+              const currentPrice = latestData.close || latestData.Close || 100;
+              
+              // Create a basic signal from backend data
+              const basicSignal = convertRLPredictionToSignal({
+                symbol: symbol,
+                signal: 'HOLD',
+                confidence: 0.5,
+                current_price: currentPrice,
+                timestamp: new Date().toISOString(),
+                reasoning: 'Data loaded from backend, RL service unavailable'
+              }, symbol);
+              
+              setSignal(basicSignal);
+              setQuantity(basicSignal.position_sizing.shares.toString());
+              setLimitPrice(basicSignal.entry_strategy.price.toString());
+              setStopLoss(basicSignal.stop_loss.price.toString());
+              
+              Alert.alert(
+                'Limited Data',
+                `Using backend data for ${symbol}. RL service unavailable - some features may be limited.`,
+                [{ text: 'OK' }]
+              );
+              return;
+            }
+          }
+        } catch (backendError) {
+          console.error('Backend fallback also failed:', backendError);
+        }
+        
+        // Last resort: show error and use minimal mock data
+        Alert.alert(
+          'Data Unavailable',
+          `Could not fetch prediction for ${symbol}.\n\n` +
+          `Please ensure:\n` +
+          `1. Backend is running\n` +
+          `2. Symbol ${symbol} exists in your dataset\n` +
+          `3. RL service is available`,
+          [
+            { text: 'Go Back', onPress: () => router.back() },
+            { text: 'Retry', onPress: () => fetchPrediction() }
+          ]
+        );
+        
+        // Use minimal mock data with the correct symbol
+        const mockWithSymbol = { 
+          ...MOCK_SIGNAL, 
+          symbol,
+          entry_strategy: { ...MOCK_SIGNAL.entry_strategy, reasoning: 'Service unavailable - using fallback data' }
+        };
+        setSignal(mockWithSymbol);
+        setQuantity(mockWithSymbol.position_sizing.shares.toString());
+        setLimitPrice(mockWithSymbol.entry_strategy.price.toString());
+        setStopLoss(mockWithSymbol.stop_loss.price.toString());
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchPrediction();
+  }, [symbol, isLoadingSymbol]);
+
+  if (isLoadingSymbol || isLoading || !symbol) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top']}>
+        <Stack.Screen options={{ headerShown: false }} />
+        <View style={[styles.header, { backgroundColor: theme.bg, borderBottomColor: theme.border }]}>
+          <Pressable onPress={() => router.back()} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color={theme.text} />
+          </Pressable>
+          <Text variant="h3" weight="semibold" style={styles.headerTitle}>Trade Setup</Text>
+          <View style={styles.headerRight} />
+        </View>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={theme.primary} />
+          <Text variant="body" muted style={{ marginTop: tokens.spacing.md }}>
+            {isLoadingSymbol ? 'Loading available symbols...' : `Loading prediction for ${symbol}...`}
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top']}>
@@ -680,5 +913,11 @@ const styles = StyleSheet.create({
   },
   actions: {
     gap: tokens.spacing.sm,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: tokens.spacing.xl,
   },
 });

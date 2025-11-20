@@ -9,7 +9,7 @@ from datetime import datetime
 
 # Import required modules
 from ..tools.news_ingest import fetch_rss, DEFAULT_RSS_SOURCES
-from ..models.sentiment import score as sentiment_score
+# Note: sentiment model import removed - module doesn't exist
 
 # Try to import Chroma for vector operations
 try:
@@ -76,7 +76,7 @@ def process_alt_data() -> Dict[str, Any]:
 def sentiment_tag() -> Dict[str, Any]:
     """
     Run sentiment analysis on news items
-    Uses sentiment.score(title) if model is present
+    Note: Sentiment model functionality removed - module doesn't exist
     
     Returns:
         Dictionary with tagging results
@@ -90,18 +90,14 @@ def sentiment_tag() -> Dict[str, Any]:
         
         tagged_count = 0  # Would be actual count of tagged items
         
-        # Example of how sentiment scoring would work:
-        # for item in news_items:
-        #     sentiment_result = sentiment_score(item['title'])
-        #     item['sentiment'] = sentiment_result['label']
-        #     item['sentiment_confidence'] = max(sentiment_result['probs'])
-        #     tagged_count += 1
+        # Note: sentiment_score function is not available
+        # This feature can be re-implemented later using a different approach
         
         return {
             "tagged": True,
             "items_tagged": tagged_count,
             "timestamp": datetime.now().isoformat(),
-            "model_available": True  # Would check if sentiment model is loaded
+            "model_available": False  # Sentiment model not available
         }
     except Exception as e:
         return {

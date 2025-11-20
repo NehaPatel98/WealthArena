@@ -139,8 +139,9 @@ router.get('/:strategyId', authenticateToken, async (req: AuthRequest, res) => {
       userId: req.userId!
     });
 
+    const strategyTyped = strategy as Record<string, any>;
     return successResponse(res, {
-      ...strategy,
+      ...strategyTyped,
       isFollowing: userStrategyResult.recordset.length > 0
     });
   } catch (error) {
@@ -180,8 +181,9 @@ router.post('/', authenticateToken, async (req: AuthRequest, res) => {
       CreatedBy: userId
     });
 
+    const strategyId = (result.recordset[0] as { StrategyID?: number })?.StrategyID;
     return successResponse(res, {
-      strategyId: result.recordset[0].StrategyID,
+      strategyId: strategyId,
       message: 'Strategy created successfully'
     }, 'Strategy created successfully', 201);
   } catch (error) {
@@ -218,7 +220,8 @@ router.put('/:strategyId', authenticateToken, async (req: AuthRequest, res) => {
       return errorResponse(res, 'Strategy not found', 404);
     }
 
-    if (ownershipResult.recordset[0].CreatedBy !== userId) {
+    const ownership = ownershipResult.recordset[0] as { CreatedBy?: number };
+    if (ownership.CreatedBy !== userId) {
       return errorResponse(res, 'Unauthorized to update this strategy', 403);
     }
 
@@ -296,7 +299,8 @@ router.delete('/:strategyId', authenticateToken, async (req: AuthRequest, res) =
       return errorResponse(res, 'Strategy not found', 404);
     }
 
-    if (ownershipResult.recordset[0].CreatedBy !== userId) {
+    const ownership = ownershipResult.recordset[0] as { CreatedBy?: number };
+    if (ownership.CreatedBy !== userId) {
       return errorResponse(res, 'Unauthorized to delete this strategy', 403);
     }
 
@@ -330,7 +334,8 @@ router.post('/:strategyId/follow', authenticateToken, async (req: AuthRequest, r
       return errorResponse(res, 'Strategy not found', 404);
     }
 
-    if (!strategyResult.recordset[0].IsPublic) {
+    const strategy = strategyResult.recordset[0] as { IsPublic?: number | boolean };
+    if (!strategy.IsPublic) {
       return errorResponse(res, 'Cannot follow private strategy', 403);
     }
 

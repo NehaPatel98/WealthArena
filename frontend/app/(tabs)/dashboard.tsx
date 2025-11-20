@@ -17,7 +17,6 @@ import {
   tokens 
 } from '@/src/design-system';
 import CandlestickChart from '../../components/CandlestickChart';
-import { mockDailyData } from '../../data/mockCandleData';
 import { alphaVantageService, AlphaVantageCandleData } from '../../services/alphaVantageService';
 import { newsService, NewsArticle } from '../../services/newsService';
 import { useUserSettings } from '../../contexts/UserSettingsContext';
@@ -26,6 +25,8 @@ import { useGamification } from '@/contexts/GamificationContext';
 import { useLeaderboard } from '@/contexts/LeaderboardContext';
 import CharacterMascot from '@/components/CharacterMascot';
 import { apiService } from '@/services/apiService';
+import { resolveBackendURL } from '@/utils/networkConfig';
+import { getAuthHeaders } from '@/services/apiService';
 
 export default function DashboardScreen() {
   const router = useRouter();
@@ -41,9 +42,9 @@ export default function DashboardScreen() {
   const [topSignals, setTopSignals] = useState<any[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(true);
   const { settings } = useUserSettings();
-  const { user } = useUser();
+  const { user, userRank: userContextRank } = useUser();
   const { currentXP, currentCoins, currentLevel, levelProgress, activeQuests } = useGamification();
-  const { userRank, globalLeaderboard } = useLeaderboard();
+  const { userRank: leaderboardRank, globalLeaderboard } = useLeaderboard();
   const showNewsPreview = settings.showNews;
 
   // Real user data from contexts
@@ -51,7 +52,8 @@ export default function DashboardScreen() {
   const portfolioValue = portfolioData?.total_value || user?.total_balance || 24580;
   const dailyPnL = portfolioData?.daily_pnl || 0;
   const winRate = user?.win_rate || 0;
-  const rank = userRank?.rank || 245;
+  // Use leaderboard rank if available, otherwise fall back to UserContext rank, then user.rank
+  const rank = leaderboardRank?.rank || userContextRank || user?.rank || 245;
   const dailyQuestProgress = activeQuests.length > 0 ? Math.round((activeQuests.filter(q => q.isCompleted).length / activeQuests.length) * 100) : 0;
   
   // Check if user is first-time user
@@ -74,17 +76,124 @@ export default function DashboardScreen() {
     checkFirstTimeUser();
   }, []);
 
-  // Fetch real market data
+  // Fetch real market data - Database first, then fallbacks
   useEffect(() => {
     const fetchMarketData = async () => {
       try {
         setIsLoadingMarket(true);
-        const data = await alphaVantageService.getSP500Data();
-        setMarketData(data);
+        
+        // PRIMARY: Try database first (from data-pipeline)
+        // Get first available symbol from dataset instead of hardcoded SPY
+        try {
+          const backendUrl = await resolveBackendURL(3000);
+          
+          // First, get available symbols
+          const symbolsResponse = await fetch(
+            `${backendUrl}/api/market-data/available-symbols`,
+            {
+              headers: await getAuthHeaders(),
+            }
+          );
+          
+          let symbolToUse = 'SPY'; // Default fallback
+          if (symbolsResponse.ok) {
+            const symbolsData = await symbolsResponse.json();
+            if (symbolsData.success && symbolsData.data && symbolsData.data.length > 0) {
+              // Use first available symbol (prefer stocks, then others)
+              const stocks = symbolsData.data.filter((s: string) => !s.includes('=') && !s.includes('-USD'));
+              symbolToUse = stocks.length > 0 ? stocks[0] : symbolsData.data[0];
+              console.log(`Using symbol from dataset: ${symbolToUse}`);
+            }
+          }
+          
+          const response = await fetch(
+            `${backendUrl}/api/market-data/history/${symbolToUse}?period=1mo`,
+            {
+              headers: await getAuthHeaders(),
+            }
+          );
+          
+          if (response.ok) {
+            const result = await response.json();
+            if (result.success && result.data && result.data.length > 0) {
+              const data = result.data.map((candle: any) => ({
+                time: candle.time,
+                open: candle.open,
+                high: candle.high,
+                low: candle.low,
+                close: candle.close,
+              }));
+              setMarketData(data);
+              return;
+            }
+          }
+        } catch (dbError) {
+          console.warn('Database fetch failed, trying fallbacks...', dbError);
+          // Don't crash - continue to fallbacks
+        }
+        
+        // FALLBACK 1: Try Alpha Vantage
+        try {
+          const data = await alphaVantageService.getSP500Data();
+          if (data && data.length > 0) {
+            setMarketData(data);
+            return;
+          }
+        } catch (avError) {
+          console.warn('Alpha Vantage failed, trying chatbot API...');
+        }
+        
+        // FALLBACK 2: Try chatbot market API (uses yfinance)
+        // Get available symbol from dataset instead of hardcoded SPY
+        try {
+          const chatbotUrl = process.env.EXPO_PUBLIC_CHATBOT_URL || 'http://localhost:8000';
+          const backendUrl = await resolveBackendURL(3000);
+          let symbolToUse = 'SPY'; // Default fallback
+          try {
+            const symbolsResponse = await fetch(
+              `${backendUrl}/api/market-data/available-symbols`,
+              {
+                headers: await getAuthHeaders(),
+              }
+            );
+            if (symbolsResponse.ok) {
+              const symbolsData = await symbolsResponse.json();
+              if (symbolsData.success && symbolsData.data && symbolsData.data.length > 0) {
+                const stocks = symbolsData.data.filter((s: string) => !s.includes('=') && !s.includes('-USD'));
+                symbolToUse = stocks.length > 0 ? stocks[0] : symbolsData.data[0];
+              }
+            }
+          } catch (e) {
+            // Use default if symbol fetch fails
+          }
+          
+          const response = await fetch(
+            `${chatbotUrl}/v1/market/ohlc?symbol=${symbolToUse}&period=1mo&interval=1d`
+          );
+          
+          if (response.ok) {
+            const ohlcData = await response.json();
+            if (ohlcData.candles && ohlcData.candles.length > 0) {
+              const data = ohlcData.candles.map((candle: any) => ({
+                time: new Date(candle.t * 1000).toISOString().split('T')[0],
+                open: candle.o,
+                high: candle.h,
+                low: candle.l,
+                close: candle.c,
+              }));
+              setMarketData(data);
+              return;
+            }
+          }
+        } catch (chatbotError) {
+          console.warn('Chatbot API also failed:', chatbotError);
+        }
+        
+        // If all sources fail, show empty state
+        setMarketData([]);
       } catch (error) {
         console.error('Failed to fetch market data:', error);
-        // Fallback to mock data
-        setMarketData(mockDailyData);
+        setMarketData([]);
       } finally {
         setIsLoadingMarket(false);
       }
@@ -141,38 +250,7 @@ export default function DashboardScreen() {
   }, [user?.user_id]);
   
   // Market candlestick data (S&P 500) - 30 days for daily chart
-  const marketCandleData = marketData.length > 0 ? marketData : [
-    { timestamp: 'Day 1', open: 4515, high: 4525, low: 4510, close: 4520 },
-    { timestamp: 'Day 2', open: 4520, high: 4535, low: 4515, close: 4530 },
-    { timestamp: 'Day 3', open: 4530, high: 4540, low: 4525, close: 4535 },
-    { timestamp: 'Day 4', open: 4535, high: 4545, low: 4530, close: 4540 },
-    { timestamp: 'Day 5', open: 4540, high: 4550, low: 4535, close: 4545 },
-    { timestamp: 'Day 6', open: 4545, high: 4555, low: 4540, close: 4550 },
-    { timestamp: 'Day 7', open: 4550, high: 4560, low: 4545, close: 4555 },
-    { timestamp: 'Day 8', open: 4555, high: 4565, low: 4550, close: 4560 },
-    { timestamp: 'Day 9', open: 4560, high: 4570, low: 4555, close: 4565 },
-    { timestamp: 'Day 10', open: 4565, high: 4575, low: 4560, close: 4570 },
-    { timestamp: 'Day 11', open: 4570, high: 4580, low: 4565, close: 4575 },
-    { timestamp: 'Day 12', open: 4575, high: 4585, low: 4570, close: 4580 },
-    { timestamp: 'Day 13', open: 4580, high: 4590, low: 4575, close: 4585 },
-    { timestamp: 'Day 14', open: 4585, high: 4595, low: 4580, close: 4590 },
-    { timestamp: 'Day 15', open: 4590, high: 4600, low: 4585, close: 4595 },
-    { timestamp: 'Day 16', open: 4595, high: 4605, low: 4590, close: 4600 },
-    { timestamp: 'Day 17', open: 4600, high: 4610, low: 4595, close: 4605 },
-    { timestamp: 'Day 18', open: 4605, high: 4615, low: 4600, close: 4610 },
-    { timestamp: 'Day 19', open: 4610, high: 4620, low: 4605, close: 4615 },
-    { timestamp: 'Day 20', open: 4615, high: 4625, low: 4610, close: 4620 },
-    { timestamp: 'Day 21', open: 4620, high: 4630, low: 4615, close: 4625 },
-    { timestamp: 'Day 22', open: 4625, high: 4635, low: 4620, close: 4630 },
-    { timestamp: 'Day 23', open: 4630, high: 4640, low: 4625, close: 4635 },
-    { timestamp: 'Day 24', open: 4635, high: 4645, low: 4630, close: 4640 },
-    { timestamp: 'Day 25', open: 4640, high: 4650, low: 4635, close: 4645 },
-    { timestamp: 'Day 26', open: 4645, high: 4655, low: 4640, close: 4650 },
-    { timestamp: 'Day 27', open: 4650, high: 4660, low: 4645, close: 4655 },
-    { timestamp: 'Day 28', open: 4655, high: 4665, low: 4650, close: 4660 },
-    { timestamp: 'Day 29', open: 4660, high: 4670, low: 4655, close: 4665 },
-    { timestamp: 'Day 30', open: 4665, high: 4675, low: 4660, close: 4670 },
-  ];
+  // Removed marketCandleData fallback - use marketData directly with empty state handling
 
   const greeting = useMemo(() => {
     const hour = new Date().getHours();
@@ -205,6 +283,36 @@ export default function DashboardScreen() {
     if (totalMinutes >= openMinutes && totalMinutes < closeMinutes) return 'open';
     return 'post';
   }, []);
+
+  // Compute week-over-week change from market data
+  const weekOverWeekChange = useMemo(() => {
+    if (!marketData || marketData.length < 5) {
+      return null; // Not enough data to compute week-over-week change
+    }
+    
+    // Get the latest close price
+    const latest = marketData[marketData.length - 1];
+    const latestClose = latest.close;
+    
+    // Get the close price from approximately 7 days ago (or as close as we have)
+    // We need at least 5 candles to have a reasonable week-over-week calculation
+    const weekAgoIndex = Math.max(0, marketData.length - 7);
+    const weekAgo = marketData[weekAgoIndex];
+    const weekAgoClose = weekAgo.close;
+    
+    if (!latestClose || !weekAgoClose || weekAgoClose === 0) {
+      return null;
+    }
+    
+    const change = latestClose - weekAgoClose;
+    const changePercent = (change / weekAgoClose) * 100;
+    
+    return {
+      change,
+      changePercent,
+      isPositive: change >= 0
+    };
+  }, [marketData]);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top']}>
@@ -330,9 +438,9 @@ export default function DashboardScreen() {
             <View style={styles.loadingContainer}>
               <Text variant="small" muted>Loading market data...</Text>
             </View>
-          ) : (
+          ) : marketData.length > 0 ? (
             <CandlestickChart 
-              data={marketCandleData.map(candle => ({
+              data={marketData.map(candle => ({
                 time: 'time' in candle ? candle.time : candle.timestamp,
                 open: candle.open,
                 high: candle.high,
@@ -341,10 +449,19 @@ export default function DashboardScreen() {
               }))} 
               chartType="daily"
             />
+          ) : (
+            <View style={styles.loadingContainer}>
+              <Text variant="small" muted center>Market data unavailable</Text>
+              <Text variant="xs" muted center style={{ marginTop: tokens.spacing.xs }}>
+                Unable to fetch live market data. Please check your connection.
+              </Text>
+            </View>
           )}
-          <Text variant="small" muted style={styles.marketNote}>
-            S&P 500 up 2.4% this week
-          </Text>
+          {weekOverWeekChange && (
+            <Text variant="small" muted style={styles.marketNote}>
+              S&P 500 {weekOverWeekChange.isPositive ? 'up' : 'down'} {Math.abs(weekOverWeekChange.changePercent).toFixed(1)}% this week
+            </Text>
+          )}
         </Card>
 
         {/* Daily Quest Progress */}

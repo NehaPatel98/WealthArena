@@ -15,6 +15,31 @@ export interface NewsArticle {
   relatedCrypto?: string[];
 }
 
+// Alpha Vantage News Article format
+interface AlphaVantageNewsArticle {
+  title: string;
+  url: string;
+  time_published: string;
+  authors?: string[];
+  summary: string;
+  source: string;
+  category_within_source?: string;
+  source_domain?: string;
+  topics?: Array<{
+    topic: string;
+    relevance_score: string;
+  }>;
+  overall_sentiment_score?: number;
+  overall_sentiment_label?: 'Bullish' | 'Somewhat-Bullish' | 'Neutral' | 'Somewhat-Bearish' | 'Bearish';
+  ticker_sentiment?: Array<{
+    ticker: string;
+    relevance_score: string;
+    ticker_sentiment_score?: string;
+    ticker_sentiment_label?: string;
+  }>;
+  banner_image?: string;
+}
+
 export interface NewsResponse {
   articles: NewsArticle[];
   totalResults: number;
@@ -25,7 +50,65 @@ class NewsService {
   private baseUrl = 'https://newsapi.org/v2';
   private apiKey = process.env.EXPO_PUBLIC_NEWS_API_KEY || 'your-news-api-key';
 
-  // Mock data for development
+  /**
+   * Convert Alpha Vantage news format to our NewsArticle format
+   */
+  private convertAlphaVantageNews(avArticle: AlphaVantageNewsArticle): NewsArticle {
+    // Determine category from topics
+    let category: NewsArticle['category'] = 'market';
+    const topics = avArticle.topics?.map(t => t.topic.toLowerCase()) || [];
+    if (topics.some(t => t.includes('earnings'))) category = 'earnings';
+    else if (topics.some(t => t.includes('fed') || t.includes('federal reserve'))) category = 'fed';
+    else if (topics.some(t => t.includes('crypto') || t.includes('bitcoin'))) category = 'crypto';
+    else if (topics.some(t => t.includes('forex') || t.includes('currency'))) category = 'forex';
+    else if (topics.some(t => t.includes('commodity') || t.includes('oil'))) category = 'commodities';
+
+    // Determine sentiment
+    let sentiment: NewsArticle['sentiment'] = 'neutral';
+    const sentimentLabel = avArticle.overall_sentiment_label?.toLowerCase() || '';
+    if (sentimentLabel.includes('bullish')) sentiment = 'positive';
+    else if (sentimentLabel.includes('bearish')) sentiment = 'negative';
+
+    // Determine impact based on sentiment score
+    let impact: NewsArticle['impact'] = 'medium';
+    const sentimentScore = Math.abs(avArticle.overall_sentiment_score || 0);
+    if (sentimentScore > 0.35) impact = 'high';
+    else if (sentimentScore < 0.15) impact = 'low';
+
+    // Extract related stocks from ticker sentiment
+    const relatedStocks = avArticle.ticker_sentiment
+      ?.filter(t => parseFloat(t.relevance_score || '0') > 0.5)
+      .map(t => t.ticker) || [];
+
+    // Parse time_published (format: YYYYMMDDTHHMMSS)
+    const timeStr = avArticle.time_published;
+    let publishedAt = new Date().toISOString();
+    if (timeStr) {
+      const year = timeStr.substring(0, 4);
+      const month = timeStr.substring(4, 6);
+      const day = timeStr.substring(6, 8);
+      const hour = timeStr.substring(9, 11);
+      const minute = timeStr.substring(11, 13);
+      publishedAt = new Date(`${year}-${month}-${day}T${hour}:${minute}:00Z`).toISOString();
+    }
+
+    return {
+      id: avArticle.url || `av-${Date.now()}-${Math.random()}`,
+      title: avArticle.title,
+      summary: avArticle.summary,
+      content: avArticle.summary, // Alpha Vantage doesn't provide full content
+      source: avArticle.source,
+      publishedAt,
+      url: avArticle.url,
+      imageUrl: avArticle.banner_image,
+      category,
+      impact,
+      sentiment,
+      relatedStocks,
+    };
+  }
+
+  // Mock data for development (fallback only)
   private mockNews: NewsArticle[] = [
     {
       id: '1',
@@ -115,11 +198,16 @@ class NewsService {
 
   async getTopNews(limit: number = 10): Promise<NewsArticle[]> {
     try {
-      // In production, you would use the News API
-      // const response = await fetch(`${this.baseUrl}/everything?q=trading+finance+stocks&sortBy=publishedAt&pageSize=${limit}&apiKey=${this.apiKey}`);
-      // const data = await response.json();
+      // Try Alpha Vantage first
+      const { alphaVantageService } = await import('./alphaVantageService');
+      const avNews = await alphaVantageService.getDailyNews(limit);
       
-      // For now, return mock data
+      if (avNews && avNews.length > 0) {
+        return avNews.map(article => this.convertAlphaVantageNews(article)).slice(0, limit);
+      }
+      
+      // Fallback to mock data if Alpha Vantage fails
+      console.warn('Alpha Vantage news unavailable, using fallback data');
       return this.mockNews.slice(0, limit);
     } catch (error) {
       console.error('Failed to fetch news:', error);
@@ -129,21 +217,39 @@ class NewsService {
 
   async getNewsByCategory(category: NewsArticle['category'], limit: number = 10): Promise<NewsArticle[]> {
     try {
-      const filteredNews = this.mockNews.filter(article => article.category === category);
-      return filteredNews.slice(0, limit);
+      // Try Alpha Vantage first
+      const { alphaVantageService } = await import('./alphaVantageService');
+      const avNews = await alphaVantageService.getWeeklyNews(limit * 3); // Get more to filter
+      
+      if (avNews && avNews.length > 0) {
+        const converted = avNews.map(article => this.convertAlphaVantageNews(article));
+        return converted.filter(article => article.category === category).slice(0, limit);
+      }
+      
+      // Fallback to mock data
+      return this.mockNews.filter(article => article.category === category).slice(0, limit);
     } catch (error) {
       console.error('Failed to fetch news by category:', error);
-      return [];
+      return this.mockNews.filter(article => article.category === category).slice(0, limit);
     }
   }
 
   async getHighImpactNews(): Promise<NewsArticle[]> {
     try {
-      const highImpactNews = this.mockNews.filter(article => article.impact === 'high');
-      return highImpactNews;
+      // Try Alpha Vantage first
+      const { alphaVantageService } = await import('./alphaVantageService');
+      const avNews = await alphaVantageService.getDailyNews(100); // Get more to filter
+      
+      if (avNews && avNews.length > 0) {
+        const converted = avNews.map(article => this.convertAlphaVantageNews(article));
+        return converted.filter(article => article.impact === 'high');
+      }
+      
+      // Fallback to mock data
+      return this.mockNews.filter(article => article.impact === 'high');
     } catch (error) {
       console.error('Failed to fetch high impact news:', error);
-      return [];
+      return this.mockNews.filter(article => article.impact === 'high');
     }
   }
 

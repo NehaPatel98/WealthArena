@@ -30,11 +30,19 @@ export const errorResponse = (
   statusCode: number = 500,
   error?: unknown
 ) => {
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  if (process.env.NODE_ENV === 'development') {
+  let errorMessage: string | undefined;
+  if (error !== undefined && error !== null) {
+    errorMessage = error instanceof Error ? error.message : String(error);
+  }
+  
+  if (process.env.NODE_ENV === 'development' && errorMessage) {
     // eslint-disable-next-line no-console
     console.error('Error:', message, errorMessage);
+  } else if (process.env.NODE_ENV === 'development') {
+    // eslint-disable-next-line no-console
+    console.error('Error:', message);
   }
+  
   return res.status(statusCode).json({
     success: false,
     message,

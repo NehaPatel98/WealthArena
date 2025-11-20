@@ -76,35 +76,225 @@ export default function GamePlayScreen() {
   const [showHelp, setShowHelp] = useState(false);
   const [currentPrice, setCurrentPrice] = useState(450.00);
   const [priceHistory, setPriceHistory] = useState<number[]>([450.00]);
+  const [historicalData, setHistoricalData] = useState<any[]>([]);
+  const [currentDataIndex, setCurrentDataIndex] = useState(0);
   const [pnl, setPnl] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [gameSession, setGameSession] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [dataInterval, setDataInterval] = useState<NodeJS.Timeout | null>(null);
+
+  // Load historical data for the symbol
+  useEffect(() => {
+    const loadHistoricalData = async () => {
+      try {
+        setIsLoading(true);
+        
+        // Validate symbol has data before proceeding
+        const { marketDataService } = await import('@/services/marketDataService');
+        const hasData = await marketDataService.checkDataAvailability(currentSymbol);
+        
+        if (!hasData) {
+          Alert.alert(
+            'Insufficient Data',
+            `Not enough historical data available for ${currentSymbol}. ` +
+            `At least 30 days of data are required for gameplay. ` +
+            `Please select a different symbol or ensure data is loaded.`,
+            [
+              { text: 'Go Back', onPress: () => router.back(), style: 'default' }
+            ]
+          );
+          setIsLoading(false);
+          return;
+        }
+        
+        // Try backend database first
+        try {
+          const { resolveBackendURL } = await import('@/utils/networkConfig');
+          const { getAuthHeaders } = await import('@/services/apiService');
+          const backendUrl = await resolveBackendURL(3000);
+          
+          const response = await fetch(
+            `${backendUrl}/api/market-data/history/${currentSymbol}?period=60d&days=60`,
+            {
+              headers: await getAuthHeaders(),
+            }
+          );
+          
+          if (response.ok) {
+            const result = await response.json();
+            if (result.success && result.data && result.data.length > 0) {
+              // Ensure we have at least 30 days of data
+              if (result.data.length < 30) {
+                Alert.alert(
+                  'Insufficient Data',
+                  `Only ${result.data.length} days of data available for ${currentSymbol}. ` +
+                  `At least 30 days are required for gameplay.`,
+                  [
+                    { text: 'Go Back', onPress: () => router.back(), style: 'default' }
+                  ]
+                );
+                setIsLoading(false);
+                return;
+              }
+              
+              // Convert to candles format
+              const candles = result.data.map((candle: any) => ({
+                t: new Date(candle.time).getTime() / 1000,
+                o: candle.open,
+                h: candle.high,
+                l: candle.low,
+                c: candle.close,
+                v: candle.volume || 0,
+              }));
+              
+              const prices = candles.map((candle: any) => candle.c);
+              setHistoricalData(candles);
+              setPriceHistory(prices);
+              setCurrentPrice(prices[prices.length - 1] || 450.00);
+              setCurrentDataIndex(prices.length - 1);
+              setIsLoading(false);
+              return;
+            }
+          }
+        } catch (dbError) {
+          console.warn('Backend database fetch failed, trying chatbot API...', dbError);
+        }
+        
+        // Fallback to chatbot API
+        const chatbotUrl = process.env.EXPO_PUBLIC_CHATBOT_URL || 'http://localhost:8000';
+        const response = await fetch(
+          `${chatbotUrl}/v1/market/ohlc?symbol=${currentSymbol}&period=60d&interval=1d`
+        );
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.candles && data.candles.length > 0) {
+            // Ensure we have at least 30 days of data
+            if (data.candles.length < 30) {
+              Alert.alert(
+                'Insufficient Data',
+                `Only ${data.candles.length} days of data available for ${currentSymbol}. ` +
+                `At least 30 days are required for gameplay.`,
+                [
+                  { text: 'Go Back', onPress: () => router.back(), style: 'default' }
+                ]
+              );
+              setIsLoading(false);
+              return;
+            }
+            
+            // Convert candles to price array (using close prices)
+            const prices = data.candles.map((candle: any) => candle.c);
+            setHistoricalData(data.candles);
+            setPriceHistory(prices);
+            setCurrentPrice(prices[prices.length - 1] || 450.00);
+            setCurrentDataIndex(prices.length - 1);
+          } else {
+            throw new Error('No candles data in response');
+          }
+        } else {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+      } catch (error: any) {
+        console.error('Error loading historical data:', error);
+        Alert.alert(
+          'Data Load Failed',
+          `Failed to load historical data for ${currentSymbol}: ${error.message}\n\n` +
+          `Please ensure:\n` +
+          `1. Backend is running\n` +
+          `2. Database has data for this symbol\n` +
+          `3. Network connection is available`,
+          [
+            { text: 'Go Back', onPress: () => router.back(), style: 'default' },
+            { text: 'Try Again', onPress: () => loadHistoricalData(), style: 'default' }
+          ]
+        );
+        // Fallback to default
+        setHistoricalData([]);
+        setPriceHistory([450.00]);
+        setCurrentPrice(450.00);
+        setCurrentDataIndex(0);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadHistoricalData();
+  }, [currentSymbol]);
 
   // Initialize or resume game session
   useEffect(() => {
     const initializeGame = async () => {
       try {
-        setIsLoading(true);
-        
         if (sessionId) {
           // Resume existing session
-          const sessionData = await apiService.resumeGameSession(sessionId);
-          setGameSession(sessionData);
-          setBalance(sessionData.currentBalance);
-          setPositions(sessionData.positions || []);
-          setCurrentPrice(sessionData.currentPrice || 450.00);
-          setPriceHistory(sessionData.priceHistory || [450.00]);
+          try {
+            const sessionData = await apiService.resumeGameSession(sessionId);
+            if (sessionData.success && sessionData.data) {
+              setGameSession(sessionData.data);
+              setBalance(sessionData.data.currentBalance || balance);
+              setPositions(sessionData.data.positions || []);
+              setCurrentPrice(sessionData.data.currentPrice || 450.00);
+              setPriceHistory(sessionData.data.priceHistory || [450.00]);
+              setCurrentDataIndex(sessionData.data.currentDataIndex || 0);
+            } else {
+              throw new Error('Session data not found');
+            }
+          } catch (sessionError: any) {
+            Alert.alert(
+              'Session Not Found',
+              `Failed to resume game session: ${sessionError.message}\n\n` +
+              `The session may have expired or been deleted.`,
+              [
+                { text: 'Go Back', onPress: () => router.back(), style: 'cancel' },
+                { text: 'Start New Game', onPress: () => {
+                  router.replace('/game-setup');
+                }, style: 'default' }
+              ]
+            );
+          }
         } else {
           // Create new session
-          const newSession = await apiService.createGameSession(mode);
-          setGameSession(newSession);
+          try {
+            const newSession = await apiService.createGameSession({
+              gameType: mode,
+              symbols: symbols,
+              difficulty: difficulty,
+              startingCash: balance,
+            });
+            
+            if (newSession.success && newSession.data) {
+              setGameSession(newSession.data);
+            } else {
+              throw new Error('Failed to create session');
+            }
+          } catch (createError: any) {
+            Alert.alert(
+              'Session Creation Failed',
+              `Failed to create game session: ${createError.message}\n\n` +
+              `Please ensure:\n` +
+              `1. Backend is running\n` +
+              `2. Database is connected\n` +
+              `3. Selected symbols have data available`,
+              [
+                { text: 'Go Back', onPress: () => router.back(), style: 'cancel' },
+                { text: 'Try Again', onPress: () => initializeGame(), style: 'default' }
+              ]
+            );
+          }
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('Failed to initialize game session:', error);
-        // Continue with local state
-      } finally {
-        setIsLoading(false);
+        // Show user-friendly error
+        Alert.alert(
+          'Initialization Error',
+          error.message || 'Failed to initialize game. Please try again.',
+          [
+            { text: 'Go Back', onPress: () => router.back(), style: 'cancel' }
+          ]
+        );
       }
     };
 
@@ -199,24 +389,67 @@ export default function GamePlayScreen() {
     );
   };
   
-  // Generate chart data from price history
-  const chartData = priceHistory.slice(-30).map((price, index) => ({
-    time: `T${index + 1}`,
-    open: index > 0 ? priceHistory[priceHistory.length - 30 + index - 1] : price,
-    high: price + Math.random() * 2,
-    low: price - Math.random() * 2,
-    close: price
-  }));
+  // Generate chart data from price history or historical data
+  const chartData = historicalData.length > 0
+    ? historicalData.slice(Math.max(0, currentDataIndex - 29), currentDataIndex + 1).map((candle: any, index: number) => ({
+        time: new Date(candle.t * 1000).toISOString().split('T')[0],
+        open: candle.o,
+        high: candle.h,
+        low: candle.l,
+        close: candle.c
+      }))
+    : priceHistory.slice(-30).map((price, index) => ({
+        time: `T${index + 1}`,
+        open: index > 0 ? priceHistory[priceHistory.length - 30 + index - 1] : price,
+        high: price + Math.random() * 2,
+        low: price - Math.random() * 2,
+        close: price
+      }));
 
-  // Simulate price movements
+  // Simulate price movements using historical data
   useEffect(() => {
-    if (!isPlaying) return;
+    if (!isPlaying || isPaused) {
+      // Clear any existing interval when paused or stopped
+      if (dataInterval) {
+        clearInterval(dataInterval);
+        setDataInterval(null);
+      }
+      return;
+    }
     
     const interval = setInterval(() => {
-      const change = (Math.random() - 0.5) * 5; // Random price movement
-      const newPrice = Math.max(currentPrice + change, 1);
-      setCurrentPrice(newPrice);
-      setPriceHistory(prev => [...prev.slice(-50), newPrice]); // Keep last 50 points
+      let newPrice = currentPrice;
+      
+      // Use historical data if available, otherwise use random movement as fallback
+      if (historicalData.length > 0 && currentDataIndex < historicalData.length - 1) {
+        // Move to next data point
+        const nextIndex = currentDataIndex + 1;
+        const nextCandle = historicalData[nextIndex];
+        newPrice = nextCandle.c;
+        
+        setCurrentPrice(newPrice);
+        setCurrentDataIndex(nextIndex);
+        setPriceHistory(prev => [...prev.slice(-50), newPrice]); // Keep last 50 points
+      } else if (historicalData.length > 0) {
+        // Reached end of historical data, use last price and pause
+        const lastCandle = historicalData[historicalData.length - 1];
+        newPrice = lastCandle.c;
+        setCurrentPrice(newPrice);
+        // Auto-pause when data ends
+        setIsPaused(true);
+        setIsPlaying(false);
+      } else {
+        // No historical data available - pause game instead of using mock data
+        console.warn('No historical data available for game simulation');
+        setIsPaused(true);
+        setIsPlaying(false);
+        Alert.alert(
+          'Data Unavailable',
+          'Historical market data is not available. Please check your connection and try again.',
+          [{ text: 'OK' }]
+        );
+        return; // Exit early to prevent mock data usage
+      }
       
       // Update positions P&L
       const totalPnL = positions.reduce((sum, pos) => {
@@ -225,8 +458,14 @@ export default function GamePlayScreen() {
       setPnl(totalPnL);
     }, mode === 'beginner' ? 2000 : mode === 'standard' ? 1000 : 500);
     
-    return () => clearInterval(interval);
-  }, [isPlaying, currentPrice, positions, mode]);
+    setDataInterval(interval);
+    
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, [isPlaying, isPaused, currentPrice, positions, mode, historicalData, currentDataIndex]);
 
   const handleBuy = () => {
     if (mode === 'beginner' && tutorialStep < TUTORIAL_STEPS.length && !showTutorial) {
@@ -309,18 +548,34 @@ export default function GamePlayScreen() {
 
   const handleExit = () => {
     if (isPlaying) {
+      // Pause the game first
+      setIsPaused(true);
+      setIsPlaying(false);
+      
       Alert.alert(
-        'Exit Game?',
-        'You are currently in a trading session. Are you sure you want to exit? Your progress will be lost.',
+        'Game Paused',
+        'The game has been paused. You can resume or exit.',
         [
-          { text: 'Cancel', style: 'cancel' },
+          { 
+            text: 'Resume', 
+            onPress: () => {
+              setIsPaused(false);
+              setIsPlaying(true);
+            }
+          },
           { 
             text: 'Exit', 
             style: 'destructive',
             onPress: () => {
               setIsPlaying(false);
+              setIsPaused(false);
               setShowTutorial(false);
               setTutorialStep(0);
+              // Clear interval
+              if (dataInterval) {
+                clearInterval(dataInterval);
+                setDataInterval(null);
+              }
               router.back();
             }
           }
@@ -329,6 +584,20 @@ export default function GamePlayScreen() {
     } else {
       router.back();
     }
+  };
+
+  const handlePause = () => {
+    setIsPaused(true);
+    setIsPlaying(false);
+    if (dataInterval) {
+      clearInterval(dataInterval);
+      setDataInterval(null);
+    }
+  };
+
+  const handleResume = () => {
+    setIsPaused(false);
+    setIsPlaying(true);
   };
 
   return (
@@ -502,7 +771,7 @@ export default function GamePlayScreen() {
             </Button>
           </View>
 
-          {!isPlaying && !showTutorial && (
+          {!isPlaying && !showTutorial && !isPaused && (
             <Button
               variant="primary"
               size="medium"
@@ -514,17 +783,40 @@ export default function GamePlayScreen() {
             </Button>
           )}
 
-          {/* End Game Button */}
-          {isPlaying && (
+          {/* Pause/Resume Controls */}
+          {isPlaying && !isPaused && (
             <Pressable 
-              onPress={handleExit}
-              style={[styles.endGameButton, { backgroundColor: theme.danger + '20', borderColor: theme.danger }]}
+              onPress={handlePause}
+              style={[styles.endGameButton, { backgroundColor: (theme.warning || '#F59E0B') + '20', borderColor: theme.warning || '#F59E0B' }]}
             >
-              <Ionicons name="stop-circle" size={20} color={theme.danger} />
-              <Text variant="body" weight="semibold" color={theme.danger}>
-                End Game
+              <Ionicons name="pause-circle" size={20} color={theme.warning || '#F59E0B'} />
+              <Text variant="body" weight="semibold" color={theme.warning || '#F59E0B'}>
+                Pause
               </Text>
             </Pressable>
+          )}
+
+          {isPaused && (
+            <View style={styles.pauseControls}>
+              <Button
+                variant="primary"
+                size="medium"
+                onPress={handleResume}
+                icon={<Ionicons name="play" size={20} color={theme.bg} />}
+                style={{ flex: 1 }}
+              >
+                Resume
+              </Button>
+              <Pressable 
+                onPress={handleExit}
+                style={[styles.endGameButton, { backgroundColor: theme.danger + '20', borderColor: theme.danger, flex: 1 }]}
+              >
+                <Ionicons name="stop-circle" size={20} color={theme.danger} />
+                <Text variant="body" weight="semibold" color={theme.danger}>
+                  End
+                </Text>
+              </Pressable>
+            </View>
           )}
         </Card>
 
@@ -677,25 +969,31 @@ export default function GamePlayScreen() {
       
       <FAB onPress={() => router.push('/ai-chat')} />
       
-      {/* Save & Exit Button */}
-      <View style={styles.saveExitContainer}>
-        <Button 
-          variant="secondary" 
-          size="small"
-          onPress={saveGameSession}
-          style={styles.saveButton}
-        >
-          Save & Exit
-        </Button>
-        <Button 
-          variant="primary" 
-          size="small"
-          onPress={completeGameSession}
-          style={styles.completeButton}
-        >
-          Complete Game
-        </Button>
-      </View>
+      {/* Save & Exit and Complete Buttons - Fixed positioning */}
+      {(isPlaying || isPaused) && (
+        <View style={styles.saveExitContainer}>
+          <Pressable 
+            onPress={saveGameSession}
+            style={[styles.saveExitButton, { backgroundColor: theme.surface, borderColor: theme.primary }]}
+          >
+            <Ionicons name="save-outline" size={18} color={theme.primary} />
+            <Text variant="small" weight="semibold" color={theme.primary}>
+              Save & Exit
+            </Text>
+          </Pressable>
+          <Pressable 
+            onPress={completeGameSession}
+            style={[styles.completeButton, { backgroundColor: theme.primary }]}
+          >
+            <Text variant="small" weight="semibold" color="#FFFFFF">
+              Complete
+            </Text>
+            <View style={[styles.completeIcon, { backgroundColor: theme.primary + '40' }]}>
+              <Ionicons name="checkmark-circle" size={16} color="#FFFFFF" />
+            </View>
+          </Pressable>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -737,6 +1035,11 @@ const styles = StyleSheet.create({
     marginTop: tokens.spacing.sm,
     borderRadius: tokens.radius.md,
     borderWidth: 1,
+  },
+  pauseControls: {
+    flexDirection: 'row',
+    gap: tokens.spacing.sm,
+    marginTop: tokens.spacing.sm,
   },
   headerTitle: {
     flex: 1,
@@ -858,16 +1161,43 @@ const styles = StyleSheet.create({
   },
   saveExitContainer: {
     position: 'absolute',
-    bottom: 100,
+    bottom: tokens.spacing.lg,
+    left: tokens.spacing.md,
     right: tokens.spacing.md,
     flexDirection: 'row',
     gap: tokens.spacing.sm,
+    zIndex: 10,
   },
-  saveButton: {
-    minWidth: 100,
+  saveExitButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: tokens.spacing.xs,
+    paddingVertical: tokens.spacing.sm,
+    paddingHorizontal: tokens.spacing.md,
+    borderRadius: tokens.radius.md,
+    borderWidth: 1,
+    flex: 1,
   },
   completeButton: {
-    minWidth: 120,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: tokens.spacing.xs,
+    paddingVertical: tokens.spacing.sm,
+    paddingHorizontal: tokens.spacing.md,
+    borderRadius: tokens.radius.md,
+    flex: 1,
+    position: 'relative',
+  },
+  completeIcon: {
+    position: 'absolute',
+    right: tokens.spacing.xs,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
 

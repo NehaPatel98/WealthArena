@@ -1,5 +1,5 @@
 {
-  "download_date": "2025-11-01T20:41:17.493816",
+  "download_date": "2025-11-13T10:43:47.801982",
   "num_symbols": 3,
   "asx_only": false,
   "global_only": false,
@@ -8,8 +8,8 @@
     "end": "2025-01-01"
   },
   "symbols": [
-    "SFY.AX",
-    "SLF.AX",
-    "STW.AX"
+    "IVV",
+    "QQQ",
+    "SPY"
   ]
 }

@@ -865,7 +865,7 @@ CREATE OR REPLACE FUNCTION sp_JoinCompetition(
     CompetitionID INT,
     UserID INT
 )
-RETURNS TABLE (ResultCode INT, Message VARCHAR, CompetitionID INT, MaxParticipants INT, CurrentParticipants INT) AS $$
+RETURNS TABLE (ResultCode INT, Message VARCHAR, CompetitionIDOut INT, MaxParticipants INT, CurrentParticipants INT) AS $$
 DECLARE
     comp_record RECORD;
     participant_count INT;
@@ -876,37 +876,37 @@ DECLARE
 BEGIN
     -- Get competition details
     SELECT * INTO comp_record
-    FROM Competitions
-    WHERE CompetitionID = sp_JoinCompetition.CompetitionID;
+    FROM Competitions c
+    WHERE c.CompetitionID = CompetitionID;
     
     -- Check if competition exists
     IF NOT FOUND THEN
-        RETURN QUERY SELECT -1, 'Competition not found'::VARCHAR, sp_JoinCompetition.CompetitionID, 0, 0;
+        RETURN QUERY SELECT -1, 'Competition not found'::VARCHAR, CompetitionID, 0, 0;
         RETURN;
     END IF;
     
     -- Check if competition is active
     IF comp_record.StartDate > NOW() OR comp_record.EndDate < NOW() THEN
-        RETURN QUERY SELECT -1, 'Competition is not active'::VARCHAR, sp_JoinCompetition.CompetitionID, 0, 0;
+        RETURN QUERY SELECT -1, 'Competition is not active'::VARCHAR, CompetitionID, 0, 0;
         RETURN;
     END IF;
     
     -- Check current participants
     SELECT COUNT(*) INTO participant_count
-    FROM CompetitionParticipants
-    WHERE CompetitionID = sp_JoinCompetition.CompetitionID;
+    FROM CompetitionParticipants cp
+    WHERE cp.CompetitionID = CompetitionID;
     
     IF participant_count >= comp_record.MaxParticipants THEN
-        RETURN QUERY SELECT -2, 'Competition is full'::VARCHAR, sp_JoinCompetition.CompetitionID, comp_record.MaxParticipants, participant_count;
+        RETURN QUERY SELECT -2, 'Competition is full'::VARCHAR, CompetitionID, comp_record.MaxParticipants, participant_count;
         RETURN;
     END IF;
     
     -- Check if user already participating
     IF EXISTS (
-        SELECT 1 FROM CompetitionParticipants
-        WHERE CompetitionID = sp_JoinCompetition.CompetitionID AND UserID = sp_JoinCompetition.UserID
+        SELECT 1 FROM CompetitionParticipants cp
+        WHERE cp.CompetitionID = CompetitionID AND cp.UserID = UserID
     ) THEN
-        RETURN QUERY SELECT -3, 'User is already participating'::VARCHAR, sp_JoinCompetition.CompetitionID, comp_record.MaxParticipants, participant_count;
+        RETURN QUERY SELECT -3, 'User is already participating'::VARCHAR, CompetitionID, comp_record.MaxParticipants, participant_count;
         RETURN;
     END IF;
     
@@ -914,29 +914,29 @@ BEGIN
     IF comp_record.EntryFee > 0 THEN
         SELECT TotalCoins INTO user_coins
         FROM UserProfiles
-        WHERE UserID = sp_JoinCompetition.UserID;
+        WHERE UserID = UserID;
         
         IF user_coins < comp_record.EntryFee THEN
-            RETURN QUERY SELECT -4, 'Insufficient coins for entry fee'::VARCHAR, sp_JoinCompetition.CompetitionID, comp_record.MaxParticipants, participant_count;
+            RETURN QUERY SELECT -4, 'Insufficient coins for entry fee'::VARCHAR, CompetitionID, comp_record.MaxParticipants, participant_count;
             RETURN;
         END IF;
         
         -- Deduct entry fee
         UPDATE UserProfiles
         SET TotalCoins = TotalCoins - comp_record.EntryFee
-        WHERE UserID = sp_JoinCompetition.UserID;
+        WHERE UserID = UserID;
     END IF;
     
     -- Add participant
     INSERT INTO CompetitionParticipants (CompetitionID, UserID, JoinedAt)
-    VALUES (sp_JoinCompetition.CompetitionID, sp_JoinCompetition.UserID, NOW());
+    VALUES (CompetitionID, UserID, NOW());
     
     -- Update competition participant count
-    UPDATE Competitions
+    UPDATE Competitions c
     SET CurrentParticipants = CurrentParticipants + 1
-    WHERE CompetitionID = sp_JoinCompetition.CompetitionID;
+    WHERE c.CompetitionID = CompetitionID;
     
-    RETURN QUERY SELECT 0, 'Successfully joined competition'::VARCHAR, sp_JoinCompetition.CompetitionID, comp_record.MaxParticipants, participant_count + 1;
+    RETURN QUERY SELECT 0, 'Successfully joined competition'::VARCHAR, CompetitionID, comp_record.MaxParticipants, participant_count + 1;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -977,14 +977,14 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION sp_GetChatHistory(
     UserID INT,
     SessionID BIGINT DEFAULT NULL,
-    Limit INT DEFAULT 50
+    MessageLimit INT DEFAULT 50
 )
 RETURNS TABLE (
     MessageID BIGINT,
-    SessionID BIGINT,
+    SessionIDOut BIGINT,
     MessageType VARCHAR,
     Content TEXT,
-    Timestamp TIMESTAMP,
+    MessageTimestamp TIMESTAMP,
     ModelUsed VARCHAR,
     ResponseTimeMs INT
 ) AS $$
@@ -995,19 +995,19 @@ BEGIN
         SELECT cm.id, cm.session_id, cm.message_type, cm.content, cm.timestamp, cm.model_used, cm.response_time_ms
         FROM chat_messages cm
         INNER JOIN chat_sessions cs ON cm.session_id = cs.id
-        WHERE cs.user_id = sp_GetChatHistory.UserID::VARCHAR
+        WHERE cs.user_id = UserID::VARCHAR
         ORDER BY cm.timestamp DESC
-        LIMIT sp_GetChatHistory.Limit;
+        LIMIT MessageLimit;
     ELSE
         -- Get messages for specific session
         RETURN QUERY
         SELECT cm.id, cm.session_id, cm.message_type, cm.content, cm.timestamp, cm.model_used, cm.response_time_ms
         FROM chat_messages cm
         INNER JOIN chat_sessions cs ON cm.session_id = cs.id
-        WHERE cs.user_id = sp_GetChatHistory.UserID::VARCHAR
+        WHERE cs.user_id = UserID::VARCHAR
         AND cm.session_id = SessionID
         ORDER BY cm.timestamp DESC
-        LIMIT sp_GetChatHistory.Limit;
+        LIMIT MessageLimit;
     END IF;
 END;
 $$ LANGUAGE plpgsql;
@@ -1017,8 +1017,8 @@ CREATE OR REPLACE FUNCTION sp_SaveChatMessage(
     SessionID BIGINT,
     UserID INT,
     SenderType VARCHAR,
-    MessageType VARCHAR DEFAULT 'text',
     MessageText TEXT,
+    MessageType VARCHAR DEFAULT 'text',
     MessageData JSONB DEFAULT NULL,
     AIModelVersion VARCHAR DEFAULT NULL,
     AIConfidence NUMERIC DEFAULT NULL,

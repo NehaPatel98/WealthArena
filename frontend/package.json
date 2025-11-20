@@ -3,9 +3,9 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
-    "start": "bunx rork start -p xce6z2x70g3gfvc48ji4u --tunnel",
-    "start-web": "bunx rork start -p xce6z2x70g3gfvc48ji4u --web --tunnel",
-    "start-web-dev": "DEBUG=expo* bunx rork start -p xce6z2x70g3gfvc48ji4u --web --tunnel",
+    "start": "npx expo start --lan",
+    "start-web": "npx expo start --web",
+    "start-web-dev": "DEBUG=expo* npx expo start --web --tunnel",
     "start-expo": "npx expo start --port 5001",
     "start-expo-dev": "npx expo start --port 5001 --dev-client",
     "start-expo-web": "npx expo start --web --port 5001",
