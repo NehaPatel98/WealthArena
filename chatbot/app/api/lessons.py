@@ -50,9 +50,19 @@ async def generate_lessons(request: GenerateLessonRequest):
     Generate Duolingo-style lessons for a topic using Groq AI
     """
     try:
+        # Validate and limit lessonCount to prevent resource exhaustion
+        # Limit to reasonable maximum (e.g., 20 lessons)
+        MAX_LESSONS = 20
+        lesson_count = min(max(1, request.lessonCount), MAX_LESSONS)
+        if request.lessonCount != lesson_count:
+            raise HTTPException(
+                status_code=400,
+                detail=f"lessonCount must be between 1 and {MAX_LESSONS}. Received: {request.lessonCount}"
+            )
+        
         lessons = []
         
-        for i in range(request.lessonCount):
+        for i in range(lesson_count):
             lesson_id = f"{request.topicId}_lesson_{i+1}"
             
             # Generate lesson content and questions using Groq

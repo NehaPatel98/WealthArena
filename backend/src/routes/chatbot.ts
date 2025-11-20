@@ -373,7 +373,10 @@ router.get('/game/episodes', async (req: Request, res: Response) => {
 // Start a new game session
 router.post('/game/start', async (req: Request, res: Response) => {
   try {
-    const response = await axios.post(`${CHATBOT_API_URL}/v1/game/start`, req.body);
+    // Validate and sanitize CHATBOT_API_URL to prevent URL injection
+    const chatbotUrl = new URL(CHATBOT_API_URL);
+    const gameStartUrl = new URL('/v1/game/start', chatbotUrl.origin + chatbotUrl.pathname);
+    const response = await axios.post(gameStartUrl.toString(), req.body);
     res.json({ success: true, data: response.data });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -389,7 +392,10 @@ router.post('/game/start', async (req: Request, res: Response) => {
 // Advance game time (tick)
 router.post('/game/tick', async (req: Request, res: Response) => {
   try {
-    const response = await axios.post(`${CHATBOT_API_URL}/v1/game/tick`, req.body);
+    // Validate and sanitize CHATBOT_API_URL to prevent URL injection
+    const chatbotUrl = new URL(CHATBOT_API_URL);
+    const gameTickUrl = new URL('/v1/game/tick', chatbotUrl.origin + chatbotUrl.pathname);
+    const response = await axios.post(gameTickUrl.toString(), req.body);
     res.json({ success: true, data: response.data });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -405,7 +411,10 @@ router.post('/game/tick', async (req: Request, res: Response) => {
 // Execute trades
 router.post('/game/trade', async (req: Request, res: Response) => {
   try {
-    const response = await axios.post(`${CHATBOT_API_URL}/v1/game/trade`, req.body);
+    // Validate and sanitize CHATBOT_API_URL to prevent URL injection
+    const chatbotUrl = new URL(CHATBOT_API_URL);
+    const gameTradeUrl = new URL('/v1/game/trade', chatbotUrl.origin + chatbotUrl.pathname);
+    const response = await axios.post(gameTradeUrl.toString(), req.body);
     res.json({ success: true, data: response.data });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : String(error);

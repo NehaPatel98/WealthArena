@@ -8,6 +8,7 @@ import uuid
 import math
 import time
 import random
+import re
 from datetime import datetime, date, timedelta
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -923,10 +924,20 @@ def _calculate_sma(data: Any, target_date: datetime, period: int) -> Optional[fl
 async def _save_agent_state(agent_id: str, agent_state: Dict[str, Any]) -> None:
     """Save agent state to JSON file"""
     try:
+        # Sanitize agent_id to prevent path traversal attacks
+        # Only allow alphanumeric, underscore, and hyphen characters
+        sanitized_agent_id = re.sub(r'[^a-zA-Z0-9_-]', '', agent_id)
+        if not sanitized_agent_id or sanitized_agent_id != agent_id:
+            raise ValueError(f"Invalid agent_id format: {agent_id}")
+        
         data_dir = Path("data/game_state")
         data_dir.mkdir(parents=True, exist_ok=True)
         
-        file_path = data_dir / f"agent_{agent_id}.json"
+        file_path = data_dir / f"agent_{sanitized_agent_id}.json"
+        
+        # Ensure the resolved path is still within the data directory (prevent path traversal)
+        if not str(file_path.resolve()).startswith(str(data_dir.resolve())):
+            raise ValueError("Invalid file path detected")
         
         with open(file_path, 'w') as f:
             json.dump(agent_state, f, indent=2, default=str)
@@ -938,8 +949,17 @@ async def _save_agent_state(agent_id: str, agent_state: Dict[str, Any]) -> None:
 async def _load_agent_state(agent_id: str) -> Optional[Dict[str, Any]]:
     """Load agent state from JSON file"""
     try:
+        # Sanitize agent_id to prevent path traversal attacks
+        sanitized_agent_id = re.sub(r'[^a-zA-Z0-9_-]', '', agent_id)
+        if not sanitized_agent_id or sanitized_agent_id != agent_id:
+            raise ValueError(f"Invalid agent_id format: {agent_id}")
+        
         data_dir = Path("data/game_state")
-        file_path = data_dir / f"agent_{agent_id}.json"
+        file_path = data_dir / f"agent_{sanitized_agent_id}.json"
+        
+        # Ensure the resolved path is still within the data directory (prevent path traversal)
+        if not str(file_path.resolve()).startswith(str(data_dir.resolve())):
+            raise ValueError("Invalid file path detected")
         
         if not file_path.exists():
             return None
@@ -1056,10 +1076,20 @@ def _calculate_score(return_pct: float, sharpe_est: float, max_drawdown: float, 
 async def _save_game_state(game_id: str, game_state: Dict[str, Any]) -> None:
     """Save game state to JSON file"""
     try:
+        # Sanitize game_id to prevent path traversal attacks
+        # Only allow alphanumeric, underscore, and hyphen characters
+        sanitized_game_id = re.sub(r'[^a-zA-Z0-9_-]', '', game_id)
+        if not sanitized_game_id or sanitized_game_id != game_id:
+            raise ValueError(f"Invalid game_id format: {game_id}")
+        
         data_dir = Path("data/game_state")
         data_dir.mkdir(parents=True, exist_ok=True)
         
-        file_path = data_dir / f"{game_id}.json"
+        file_path = data_dir / f"{sanitized_game_id}.json"
+        
+        # Ensure the resolved path is still within the data directory (prevent path traversal)
+        if not str(file_path.resolve()).startswith(str(data_dir.resolve())):
+            raise ValueError("Invalid file path detected")
         
         with open(file_path, 'w') as f:
             json.dump(game_state, f, indent=2, default=str)
@@ -1071,8 +1101,17 @@ async def _save_game_state(game_id: str, game_state: Dict[str, Any]) -> None:
 async def _load_game_state(game_id: str) -> Optional[Dict[str, Any]]:
     """Load game state from JSON file"""
     try:
+        # Sanitize game_id to prevent path traversal attacks
+        sanitized_game_id = re.sub(r'[^a-zA-Z0-9_-]', '', game_id)
+        if not sanitized_game_id or sanitized_game_id != game_id:
+            raise ValueError(f"Invalid game_id format: {game_id}")
+        
         data_dir = Path("data/game_state")
-        file_path = data_dir / f"{game_id}.json"
+        file_path = data_dir / f"{sanitized_game_id}.json"
+        
+        # Ensure the resolved path is still within the data directory (prevent path traversal)
+        if not str(file_path.resolve()).startswith(str(data_dir.resolve())):
+            raise ValueError("Invalid file path detected")
         
         if not file_path.exists():
             return None
