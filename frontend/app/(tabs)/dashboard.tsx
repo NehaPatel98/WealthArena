@@ -49,11 +49,11 @@ export default function DashboardScreen() {
 
   // Real user data from contexts
   const displayName = user?.full_name || user?.displayName || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || 'Trader';
-  const portfolioValue = portfolioData?.total_value || user?.total_balance || 24580;
+  const portfolioValue = portfolioData?.total_value || user?.total_balance || 100000; // Default starting balance
   const dailyPnL = portfolioData?.daily_pnl || 0;
   const winRate = user?.win_rate || 0;
-  // Use leaderboard rank if available, otherwise fall back to UserContext rank, then user.rank
-  const rank = leaderboardRank?.rank || userContextRank || user?.rank || 245;
+  // Use leaderboard rank if available, otherwise fall back to UserContext rank, then user.rank, or null for new users
+  const rank = leaderboardRank?.rank || userContextRank || user?.rank || null;
   const dailyQuestProgress = activeQuests.length > 0 ? Math.round((activeQuests.filter(q => q.isCompleted).length / activeQuests.length) * 100) : 0;
   
   // Check if user is first-time user
