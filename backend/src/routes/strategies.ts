@@ -82,8 +82,8 @@ router.get('/', authenticateToken, async (req: AuthRequest, res) => {
     query += ` ORDER BY s.CreatedAt DESC`;
 
     query = `SELECT * FROM (${query}) as strategies ORDER BY UserCount DESC, CreatedAt DESC OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY`;
-    params.offset = Number.Number.parseInt(offset as string, 10);
-    params.limit = Number.Number.parseInt(limit as string, 10);
+    params.offset = Number.parseInt(offset as string, 10);
+    params.limit = Number.parseInt(limit as string, 10);
 
     const result = await executeQuery(query, params);
 
@@ -120,7 +120,7 @@ router.get('/:strategyId', authenticateToken, async (req: AuthRequest, res) => {
       WHERE s.StrategyID = @strategyId
     `;
 
-    const result = await executeQuery(query, { strategyId: Number.Number.parseInt(strategyId, 10) });
+    const result = await executeQuery(query, { strategyId: Number.parseInt(strategyId, 10) });
 
     if (result.recordset.length === 0) {
       return errorResponse(res, 'Strategy not found', 404);
@@ -135,7 +135,7 @@ router.get('/:strategyId', authenticateToken, async (req: AuthRequest, res) => {
     `;
 
     const userStrategyResult = await executeQuery(userStrategyQuery, {
-      strategyId: Number.Number.parseInt(strategyId, 10),
+      strategyId: Number.parseInt(strategyId, 10),
       userId: req.userId!
     });
 
@@ -226,7 +226,7 @@ router.put('/:strategyId', authenticateToken, async (req: AuthRequest, res) => {
     }
 
     const updateFields = [];
-    const params: any = { strategyId: Number.Number.parseInt(strategyId, 10) };
+    const params: any = { strategyId: Number.parseInt(strategyId, 10) };
 
     if (strategyName) {
       updateFields.push('StrategyName = @strategyName');
@@ -346,7 +346,7 @@ router.post('/:strategyId/follow', authenticateToken, async (req: AuthRequest, r
     `;
 
     const followResult = await executeQuery(followQuery, {
-      strategyId: Number.Number.parseInt(strategyId, 10),
+      strategyId: Number.parseInt(strategyId, 10),
       userId
     });
 
@@ -406,7 +406,7 @@ router.post('/:strategyId/backtest', authenticateToken, async (req: AuthRequest,
     // This would typically call the RL system's backtesting API
     // For now, return a placeholder response
     const backtestResult = {
-      strategyId: Number.Number.parseInt(strategyId, 10),
+      strategyId: Number.parseInt(strategyId, 10),
       startDate,
       endDate,
       initialCapital,
