@@ -1316,7 +1316,7 @@ function Invoke-Phase4-Services {
     Write-StatusMessage "Starting Chatbot service (Direct GroQ API)..." "INFO"
     try {
         $chatbotDir = Join-Path $script:ScriptDir "chatbot"
-        $chatbotCmd = "cd '$chatbotDir'; python main.py"
+        $chatbotCmd = "cd '$chatbotDir'; python -m app.main"
         Start-Process powershell -ArgumentList '-NoExit', '-Command', $chatbotCmd
         Start-Sleep -Seconds 5
         
