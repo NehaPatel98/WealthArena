@@ -1,699 +1,294 @@
-# WealthArena RL System
+# Agentic Multi-Agent RL Trading System
 
-A comprehensive reinforcement learning platform for multi-asset portfolio management, featuring advanced signal engineering, hierarchical RL agents, risk management, and LLM integration.
+A production-grade, multi-asset, multi-agent reinforcement learning (RL) platform that orchestrates hierarchical trading strategies across equities, ETFs, commodities, options, forex, and cryptocurrencies. The system integrates Bronze→Silver→Gold data engineering pipelines, specialized PPO asset agents, a SAC-based meta-controller, and BentoML-powered serving with LangGraph orchestration.
 
-## ⚠️ EMERGENCY: Yahoo Finance Blocked
+## Important: Recent Updates (2025)
 
-**If you're seeing "Expecting value: line 1 column 1 (char 0)" errors**, Yahoo Finance API is completely blocked or unavailable. This is a **CRITICAL SITUATION** that prevents all live data downloads.
+**Yahoo Finance Authentication Changes**: Yahoo Finance implemented stricter authentication requirements in 2025, requiring browser impersonation via `curl_cffi`. The following updates are required:
 
-### Immediate Solution: Use Synthetic Data
-
-**The system now automatically uses synthetic data when Yahoo Finance is blocked.** However, you can force it explicitly:
-
-```bash
-python collect_training_data.py --stocks --use-synthetic-data --max-stocks-symbols 20
-```
-
-This will:
-- **Bypass Yahoo Finance completely** - No API calls attempted
-- **Generate realistic synthetic OHLCV data** - Uses geometric Brownian motion with correlations
-- **Save data to `data/processed/`** - Can be reused for training
-- **Complete in 5-10 minutes** - Instead of 45+ minutes of failures
-
-### Why Synthetic Data Works
-
-Synthetic data is **sufficient for training and testing** RL agents because:
-- Uses realistic price movements and correlations between stocks
-- Includes proper OHLCV data with technical indicators
-- Generated quickly without API dependencies
-- Can be customized with parameters (volatility, correlations, etc.)
-
-### Quick Start with Synthetic Data
-
-1. **Generate synthetic data:**
+1. **Update Dependencies**:
    ```bash
-   python collect_training_data.py --stocks --use-synthetic-data --max-stocks-symbols 20
+   pip install --upgrade yfinance>=0.2.58 curl-cffi>=0.6.0
+   # or
+   conda env update -f environment.yml
    ```
 
-2. **Verify data:**
-   Check `data/processed/` directory for CSV files
+2. **Verify `.env` File Format**: The `.env` file must use `KEY=value` format, not JSON format. See [Troubleshooting Guide](docs/troubleshooting.md#environment-file-format) for details.
 
-3. **Start training:**
-   ```bash
-   python train.py --config config/production_config.yaml
-   ```
+3. **Check Troubleshooting Guide**: If you encounter 401 Unauthorized errors, see the [Yahoo Finance 401 Errors](docs/troubleshooting.md#yahoo-finance-401-unauthorized-errors) section for solutions.
 
-4. **Monitor progress:**
-   Check `logs/training.log`
-
-**Total time: 5-10 minutes** instead of hours of failures.
-
-### Understanding the Error
-
-The "Expecting value: line 1 column 1" error means:
-- Yahoo Finance API is **rate limiting your IP address completely**
-- **Automated access is blocked**
-- **Service outage** or maintenance
-- **Authentication/headers required** that aren't being sent
-
-This is **NOT about specific symbols** - it's a complete API blockage.
-
-### When to Use Real Data
-
-Once API access is restored:
-- Remove `--use-synthetic-data` flag
-- Use `--force-live-download` to override cache
-- Real data will be downloaded automatically
-
-## 🚀 Features
-
-### Core Capabilities
-- **Multi-Asset Data Collection**: Dynamic data fetching from exchanges (ASX, NYSE, NASDAQ) and APIs (Yahoo Finance, Alpha Vantage, FRED, CoinGecko)
-- **Advanced Signal Engineering**: 100+ technical indicators, volatility estimators, and fundamental signals
-- **Hierarchical RL Agents**: High-level allocator + low-level execution policies with PPO and SAC algorithms
-- **Offline RL Pretraining**: Conservative Q-Learning (CQL), Batch-Constrained Q-Learning (BCQ), and Behavior Cloning
-- **Multi-Objective Optimization**: Reward shaping balancing return, risk, liquidity, and ESG goals
-- **Covariance-Aware Risk Management**: Dynamic hedging, portfolio optimization, and stress testing
-- **Advanced Backtesting**: Vectorized, walk-forward, and Monte Carlo backtesting engines
-- **LLM Integration**: Event extraction, sentiment analysis, and explainable trade rationales
-
-### Technical Highlights
-- **Market Microstructure Simulation**: Order book simulation, transaction costs, and latency modeling
-- **Real-time Processing**: Asynchronous data processing and signal generation
-- **Production-Ready**: Docker containerization, Kubernetes deployment, and Azure integration
-- **Comprehensive Monitoring**: Performance metrics, risk attribution, and system health monitoring
-
-## 📁 Project Structure
+## Architecture Overview
 
 ```
-wealtharena_rl/
-├── src/
-│   ├── data/
-│   │   └── advanced_signal_engineering.py    # Signal generation and processing
-│   ├── simulation/
-│   │   └── market_microstructure.py          # Market simulation and order book
-│   ├── agents/
-│   │   ├── hierarchical_rl_agents.py         # Hierarchical RL system
-│   │   └── offline_rl_pretraining.py         # Offline RL algorithms
-│   ├── optimization/
-│   │   └── multi_objective_optimization.py   # Multi-objective reward shaping
-│   ├── backtesting/
-│   │   └── advanced_backtesting.py           # Backtesting engines
-│   ├── risk/
-│   │   └── covariance_aware_risk.py          # Risk management and hedging
-│   ├── llm/
-│   │   └── llm_integration.py                # LLM integration and NLP
-│   └── integration/
-│       └── wealtharena_rl_system.py          # Main system integration
+[ Bronze Data ] → [ Silver Data ] → [ Gold Features ]
+        ↓                ↓               ↓
+  Collectors      Bronze→Silver     Feature Pipelines
+        ↓                ↓               ↓
+    PPO Agents (per asset class) → SAC Meta-Controller → Execution Layer
+```
+
+- **Bronze Layer**: Immutable raw market, news, social, and macro data.
+- **Silver Layer**: Cleaned, schema-enforced Parquet datasets with quality flags.
+- **Gold Layer**: Feature-engineered, normalized datasets for ML training.
+- **Asset Agents**: PPO agents tailored per asset class with CQL offline pretraining.
+- **Meta-Controller**: SAC allocator leveraging covariance-aware risk management and regime detection.
+- **Serving & Orchestration**: LangGraph workflows, Ray distributed training, BentoML APIs, and paper trading connectors.
+
+## Technology Stack
+
+- Python 3.10+
+- PyTorch (CUDA-capable when available)
+- Stable-Baselines3 (PPO, SAC) & Ray RLlib/Tune
+- FinRL, Gym/Gymnasium environments
+- PyPortfolioOpt, cvxpy for portfolio optimization
+- LangGraph, LangChain, LangSmith for orchestration and tracing
+- Backtrader, vectorbt for backtesting
+- BentoML for model serving
+- W&B, TensorBoard for experiment tracking
+- Transformers (FinBERT, BERTweet) for sentiment analysis
+
+## Directory Structure
+
+```
+├─ config/                # YAML configs (data, features, agents, backtesting, etc.)
+├─ data/                  # Bronze/Silver/Gold medallion layers + catalog/audit
+├─ docs/                  # Architecture, pipeline, troubleshooting documentation
+├─ experiments/           # Versioned experiment artifacts
+├─ models/                # Trained models (PPO agents, SAC controller, Bento bundles)
+├─ notebooks/             # Exploratory & analytical notebooks
+├─ paper/                 # LaTeX research paper, figures, references
+├─ results/               # Backtests, walk-forward, Monte Carlo outputs
+├─ scripts/               # CLI workflows for data, training, backtesting, serving
+├─ src/                   # Source modules (data, features, agents, orchestration, etc.)
+├─ tests/                 # Pytest suites per subsystem
+└─ IMPLEMENTATION_GUIDE.md
+```
+
+## Installation (Windows 10/11)
+
+1. **Install Miniconda**: https://docs.conda.io/en/latest/miniconda.html
+2. **Clone Repository**: `git clone <repo-url>`
+3. **Create Environment**:
+   ```powershell
+   conda env create -f environment.yml
+   conda activate agentic-rl-trading
+   ```
+   **Note**: The environment now includes `yfinance>=0.2.58` and `curl-cffi>=0.6.0` for Yahoo Finance authentication support.
+4. **GPU Optionality**:
+   - The default `environment.yml` targets CPU installs. If you have a CUDA-capable Linux box, uncomment the `pytorch-cuda` and `cudatoolkit` lines before creating the environment.
+   - On Windows, leave those lines commented; the PyTorch channel will install CPU binaries automatically.
+5. **Handle Binary Dependencies**:
+   - `TA-Lib`: `conda install -c conda-forge ta-lib`
+   - `cvxpy`: `conda install -c conda-forge cvxpy`
+   - Ensure Microsoft Build Tools (Visual Studio Build Tools) are present for optional native extensions.
+6. **Install Additional Tools** (optional):
+   - MiKTeX or TeX Live for LaTeX compilation on Windows.
+7. **Verify Installation**:
+   ```bash
+   python -c "import yfinance; import curl_cffi; print('Dependencies OK')"
+   ```
+
+## Quick Start
+
+1. **Configure Environment**:
+   - Copy `.env.example` → `.env` and populate secrets (or create `.env` with `KEY=value` format, not JSON).
+   - **Important**: Verify your `.env` file uses `KEY=value` format (not JSON). See [Troubleshooting Guide](docs/troubleshooting.md#environment-file-format).
+   - **Verify parsing**: Run `python -c "from dotenv import load_dotenv; load_dotenv(); import os; print(os.getenv('ALPHA_VANTAGE_API_KEY'))"` to ensure the file parses correctly.
+   - Review `config/*.yaml` for data, features, agents, backtests.
+
+### API Keys (All Optional - Can Be Added Later)
+
+All API keys are optional and can be added later as needed. The system will skip collection for data sources that require keys you don't have, and continue with available data sources.
+
+- **Alpha Vantage API Key**: For news and fundamental data. Get at https://www.alphavantage.co/support/#api-key. If not configured, news collection will be skipped.
+- **FRED API Key**: For macroeconomic indicators. Get a free key at https://fred.stlouisfed.org/docs/api/api_key.html. If not configured, macro data collection will be skipped.
+- **CCXT Exchange Keys** (`CCXT_EXCHANGE_API_KEY`, `CCXT_EXCHANGE_SECRET`): For cryptocurrency exchange data. If not configured, crypto data will be collected via Yahoo Finance only.
+- **Alpaca API Keys** (`ALPACA_API_KEY`, `ALPACA_SECRET_KEY`): Required only for paper trading in Phase 7+ (Execution & Market Simulation). Not needed for data collection (Phase 1). Alpaca paper trading keys are available at https://app.alpaca.markets/paper/dashboard/overview.
+- **Reddit API Credentials** (`PRAW_CLIENT_ID`, `PRAW_CLIENT_SECRET`, `PRAW_USER_AGENT`): The system can collect social sentiment data without credentials using a fallback mode. Full Reddit API access requires creating a script app at https://www.reddit.com/prefs/apps. Note: The code also supports `REDDIT_CLIENT_ID`/`REDDIT_CLIENT_SECRET` as fallback for backward compatibility.
+- **WANDB API Key**: For experiment tracking and visualization. Optional but recommended for training phases. Get at https://wandb.ai/settings.
+- **LANGSMITH API Key**: For LangGraph workflow tracing. Optional but recommended for orchestration phases. Get at https://smith.langchain.com/settings.
+- **Twitter/X Bearer Token**: Currently not implemented; reserved for future use.
+
+### Data Collection Notes
+
+- **Options Data**: Yahoo Finance heavily rate-limits options requests. The system can function without options data, focusing on stocks, forex, crypto, ETFs, and commodities.
+- **Social Media Data**: Limited social sentiment data is available without Reddit credentials via unauthenticated API access.
+
+### Optional Data Sources
+
+Some data sources (e.g., options chains) are marked as optional due to API reliability issues. If collection fails:
+
+- The pipeline continues automatically
+- Affected features/agents are skipped
+- Detailed failure information is logged
+- You can retry collection manually later
+
+See `PROGRESS_TRACKER.md` for details on optional steps and how to retry them.
+
+2. **New Step 1.5: Generate Stock Catalogs**:
+   - Create sector catalog CSVs before collecting stocks.
+   - ```powershell
+     python scripts/generate_stock_catalog.py --config config/data_config.yaml
+     ```
+   - Produces 50 random tickers per sector under `data/catalog/stocks/`.
+   - Run again whenever you want to refresh the stock universe; otherwise reuse the generated files.
+   - Skipping this step forces `collect_stocks.py` to fall back to a 5-ticker safety list.
+3. **Collect Data**:
+   ```powershell
+   python scripts/collect_all_data.py --config config/data_config.yaml
+   ```
+   - The system will continue even if options or social media data collection fails. See `docs/troubleshooting.md` for details.
+4. **Process Data Pipeline**:
+   ```powershell
+   python scripts/process_data_pipeline.py --stage all
+   ```
+   - Automatically processes only available asset types from the Bronze layer.
+5. **Train Agents & Meta-Controller**:
+   ```powershell
+   python scripts/train_all_agents.py --config config/agent_config.yaml --stage all
+   ```
+   - Automatically validates Gold layer data availability and trains agents only for available asset classes.
+6. **Run Comprehensive Backtest**:
+   ```powershell
+   python scripts/run_comprehensive_backtest.py --config config/backtest_config.yaml --backtest-type all
+   ```
+7. **Serve & Paper Trade**:
+   ```powershell
+   python scripts/serve_and_trade.py --config config/agent_config.yaml --platform alpaca
+   ```
+
+## Master Automation System
+
+**Author**: Clifford Addison  
+**Year**: 2025  
+**Company**: WealthArena
+
+This project includes a comprehensive PowerShell automation system that orchestrates the entire RL trading pipeline from data collection to deployment.
+
+### Running the Master Automation
+
+```powershell
+# Run the complete automation (interactive mode)
+.\master_automation.ps1
+
+# Run with specific options
+.\master_automation.ps1 -SkipPhase 1,2 -ForceRerun -DryRun
+
+# Resume from checkpoint
+.\master_automation.ps1 -Resume
+```
+
+### Features
+
+- **Checkpoint System**: Automatically tracks completed phases and steps, allowing safe resumption
+- **Interactive Setup**: Guided prompts for API keys with instructions
+- **Git Integration**: Automated commits and pushes after each successful step
+- **Metrics Collection**: Comprehensive metrics for advisor reporting (data store, pipeline, ML, testing, scraping)
+- **SonarQube Integration**: Automated code quality analysis
+- **Progress Reports**: Detailed Markdown reports with all required metrics and tables
+- **Error Handling**: Robust retry logic with manual intervention options
+- **Notebook Execution**: Automated or interactive Jupyter notebook execution
+
+### Automation Structure
+
+```
+automation/
+├── modules/                    # PowerShell modules
+│   ├── CheckpointManager.ps1   # Checkpoint management
+│   ├── GitManager.ps1          # Git operations
+│   ├── InteractivePrompts.ps1  # User prompts
+│   ├── MetricsCollector.ps1    # Metrics collection
+│   └── ReportGenerator.ps1     # Report generation
+├── helpers/                    # Python helper scripts
+│   ├── collect_datastore_metrics.py
+│   ├── collect_pipeline_metrics.py
+│   ├── collect_ml_metrics.py
+│   ├── collect_test_metrics.py
+│   ├── collect_scraping_metrics.py
+│   └── execute_notebooks.py
 ├── config/
-│   └── wealtharena_config.yaml              # System configuration
-├── data_collection_for_training.py          # Enhanced data collection
-├── requirements.txt                         # Python dependencies
-└── README.md                               # This file
+│   └── automation_config.json  # Automation configuration
+├── phase_definitions.json      # Phase and step definitions
+├── checkpoints/                # Checkpoint state files (auto-generated)
+├── logs/                       # Automation logs (auto-generated)
+├── metrics/                    # Collected metrics (auto-generated)
+└── reports/                    # Progress reports (auto-generated)
 ```
 
-## 🛠️ Installation
+### Configuration
 
-### Prerequisites
-- Python 3.8+
-- CUDA-capable GPU (optional, for accelerated training)
-- 8GB+ RAM recommended
+Customize automation behavior by editing `automation/config/automation_config.json`. Key settings:
 
-### Quick Start
+- Git repository and branch configuration
+- Checkpoint retention policy
+- Logging levels and rotation
+- Metrics collection frequency
+- Phase enablement and time estimates
+- SonarQube integration settings
 
-1. **Clone the repository**
-```bash
-git clone <repository-url>
-cd wealtharena_rl
-```
+### Checkpoints
 
-2. **Install dependencies**
-```bash
-pip install -r requirements.txt
-```
+The automation system maintains checkpoints in JSON format, tracking:
 
-3. **Configure the system**
-```bash
-cp config/wealtharena_config.yaml.example config/wealtharena_config.yaml
-# Edit the configuration file with your API keys and preferences
-```
+- Completed phases and steps with timestamps
+- Git commit history
+- Configured API keys
+- Collected metrics
+- Error history
 
-4. **Run the system**
-```bash
-python src/integration/wealtharena_rl_system.py
-```
+Checkpoints are automatically cleaned up (keeping the latest 5 by default) to prevent clutter.
 
-### Docker Deployment
+### Reports
 
-1. **Build the container**
-```bash
-docker build -t wealtharena-rl .
-```
+Progress reports are generated in Markdown format and include:
 
-2. **Run the container**
-```bash
-docker run -p 8000:8000 wealtharena-rl
-```
+- Project board items (tasks with completion status)
+- Git repository status
+- Features developed (completed vs pending)
+- Test cases summary (fixed, failing, new failures)
+- Comprehensive metrics tables (data store, pipeline, ML, testing, scraping)
+- Code quality metrics from SonarQube
+- Time tracking (estimated vs actual)
+- Documentation coverage
+- Deployment readiness
 
-## 🔧 Configuration
+Reports are saved to `automation/reports/progress_report_YYYYMMDD.md` and can be shared directly with advisors.
 
-The system is configured via `config/wealtharena_config.yaml`. Key configuration options:
+### Troubleshooting
 
-### Data Sources
-```yaml
-data_sources:
-  - yahoo_finance
-  - alpha_vantage
-  - fred
-  - coingecko
+If the automation encounters errors:
 
-asset_types:
-  - stocks
-  - etfs
-  - crypto
-  - forex
-  - commodities
+1. Check `automation/logs/automation_log.txt` for detailed logs
+2. Review `automation/logs/automation_errors.txt` for error stack traces
+3. Use `-DryRun` flag to test without executing commands
+4. Use `-Resume` flag to continue from last checkpoint
+5. Manually complete failed steps and mark them complete when prompted
 
-exchanges:
-  - ASX
-  - NYSE
-  - NASDAQ
-```
+#### Options Data Collection Failures
 
-### RL Agents
-```yaml
-agent_configs:
-  allocator:
-    state_dim: 50
-    action_dim: 10
-    hidden_dims: [256, 128, 64]
-    learning_rate: 0.0001
-```
+If options data collection fails due to Yahoo Finance rate limiting:
 
-### Risk Management
-```yaml
-risk_config:
-  covariance_method: "ledoit_wolf"
-  optimization_method: "risk_parity"
-  rebalance_frequency: "monthly"
-  min_weight: 0.0
-  max_weight: 0.1
-```
+1. The pipeline will continue automatically (options are optional)
+2. Options agent training will be skipped
+3. Retry later: `python scripts/collect_options.py --config config/data_config.yaml`
+4. Check metrics: `automation/metrics/phase_phase1_metrics.json`
 
-## 📊 Usage Examples
+For more details, see `docs/troubleshooting.md`.
 
-### Data Collection
-```python
-from data_collection_for_training import MultiAssetDataCollector
+## Documentation & Paper
 
-# Collect data for all asset types from all exchanges
-collector = MultiAssetDataCollector({
-    "asset_types": ["stocks", "crypto", "forex"],
-    "exchanges": ["ASX", "NYSE", "NASDAQ"],
-    "start_date": "2020-01-01",
-    "end_date": "2024-12-31"
-})
+- Detailed design docs in `docs/`
+- Experiment logs in `experiments/`
+- LaTeX paper under `paper/` with IEEE/ACM compliant structure
+- Figures and tables exported to `results/`
 
-# Run data collection
-collector.collect_all_data()
-```
+## License & Citation
 
-### Signal Engineering
-```python
-from src.data.advanced_signal_engineering import AdvancedSignalEngine
+This project consolidates research and open-source frameworks referenced in `EXISTING IMPLEMENTATION & RESOURCES.txt`. Cite foundational works (PPO, SAC, CQL, FinRL, PyPortfolioOpt, Backtrader, BentoML, LangGraph, etc.) using provided BibTeX entries in `paper/references.bib`.
 
-# Initialize signal engine
-signal_engine = AdvancedSignalEngine({"lookback_period": 252})
+## Acknowledgments
 
-# Generate signals for market data
-signals = signal_engine.generate_all_signals(market_data, "AAPL")
-```
-
-### RL Agent Training
-```python
-from src.agents.hierarchical_rl_agents import HierarchicalRLSystem
-
-# Initialize RL system
-rl_system = HierarchicalRLSystem({
-    "allocator_state_dim": 50,
-    "executor_state_dim": 20,
-    "assets": ["AAPL", "GOOGL", "MSFT"]
-})
-
-# Train agents
-rl_system.train_agents(market_data, signals)
-```
-
-### Risk Management
-```python
-from src.risk.covariance_aware_risk import CovarianceAwareRiskManager
-
-# Initialize risk manager
-risk_manager = CovarianceAwareRiskManager(risk_config)
-
-# Manage portfolio risk
-risk_results = risk_manager.manage_portfolio_risk(returns_data, portfolio_weights)
-```
-
-### Backtesting
-```python
-from src.backtesting.advanced_backtesting import VectorizedBacktester
-
-# Initialize backtester
-backtester = VectorizedBacktester(backtest_config)
-
-# Run backtest
-results = backtester.run_backtest(market_data, strategy_function)
-```
-
-## 🧪 Testing
-
-Run the test suite:
-```bash
-pytest tests/
-```
-
-Run specific test categories:
-```bash
-pytest tests/test_agents.py          # RL agent tests
-pytest tests/test_backtesting.py     # Backtesting tests
-pytest tests/test_risk_management.py # Risk management tests
-```
-
-## 📈 Performance Monitoring
-
-The system provides comprehensive performance monitoring:
-
-- **Real-time Metrics**: Portfolio performance, risk metrics, and agent performance
-- **Risk Attribution**: Factor decomposition and risk contribution analysis
-- **Backtesting Results**: Historical performance analysis with confidence intervals
-- **LLM Insights**: Sentiment analysis and event impact assessment
-
-## 🔒 Security & Compliance
-
-- **Data Encryption**: All sensitive data encrypted at rest and in transit
-- **API Key Management**: Secure storage and rotation of API keys
-- **Audit Logging**: Comprehensive logging for compliance and debugging
-- **Access Control**: Role-based access control for different user types
-
-## 🚀 Deployment
-
-### Azure Deployment
-
-1. **Create Azure resources**
-```bash
-az group create --name wealtharena-rg --location eastus
-az acr create --resource-group wealtharena-rg --name wealtharenaregistry --sku Basic
-```
-
-2. **Deploy with Kubernetes**
-```bash
-kubectl apply -f k8s/
-```
-
-### Local Development
-
-1. **Start development environment**
-```bash
-docker-compose up -d
-```
-
-2. **Access services**
-- API: http://localhost:8000
-- Monitoring: http://localhost:3000
-- Database: localhost:5432
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- **Stable Baselines3** for RL algorithms
-- **TA-Lib** for technical analysis
-- **Hugging Face** for transformer models
-- **OpenAI** for LLM integration
-- **Yahoo Finance** for market data
-
-## 📞 Support
-
-For support and questions:
-- Create an issue on GitHub
-- Email: support@wealtharena.com
-- Documentation: https://docs.wealtharena.com
-
-## 🔮 Roadmap
-
-### Phase 1 (Completed)
-- ✅ Multi-asset data collection
-- ✅ Advanced signal engineering
-- ✅ Hierarchical RL agents
-- ✅ Offline RL pretraining
-- ✅ Multi-objective optimization
-- ✅ Risk management
-- ✅ Advanced backtesting
-- ✅ LLM integration
-
-### Phase 2 (In Progress)
-- 🔄 Production deployment
-- 🔄 Real-time streaming
-- 🔄 Web dashboard
-- 🔄 User authentication
-- 🔄 Tournament system
-
-### Phase 3 (Planned)
-- 📋 Mobile app
-- 📋 Advanced analytics
-- 📋 Social trading features
-- 📋 Regulatory compliance tools
-
----
-
-## 📊 Synthetic Data Generation
-
-### Overview
-
-Synthetic data generation provides a **reliable fallback** when Yahoo Finance or other data sources are unavailable. It uses **geometric Brownian motion** with realistic correlations to generate OHLCV stock data.
-
-### Parameters
-
-The synthetic data generator uses these default parameters:
-- **Daily return mean**: 0.0005 (0.05% per day, ~13% annual)
-- **Daily volatility**: 0.02 (2% per day, ~32% annual)
-- **Correlation between stocks**: 0.3 (moderate correlation)
-- **Starting price**: $100 per stock
-- **Volume**: Log-normal distribution with mean 1M shares
-
-### Customizing Parameters
-
-You can customize synthetic data parameters in the configuration:
-
-```yaml
-synthetic_data:
-  enabled: true
-  num_symbols: 20
-  start_date: "2020-01-01"
-  end_date: "2024-12-31"
-  daily_return_mean: 0.0005
-  daily_volatility: 0.02
-  correlation: 0.3
-  starting_price: 100.0
-  volume_mean: 1000000
-```
-
-### Usage
-
-**Generate synthetic data:**
-```bash
-python collect_training_data.py --stocks --use-synthetic-data --max-stocks-symbols 20
-```
-
-**Training with synthetic data:**
-The training script automatically uses synthetic data when Yahoo Finance is blocked. No additional configuration needed.
-
-### Verifying Data Quality
-
-After generating synthetic data:
-1. Check `data/processed/synthetic_data_metadata.json` for generation parameters
-2. Verify CSV files in `data/processed/` directory
-3. Check logs for generation statistics
-
-### Caching
-
-Generated synthetic data is automatically saved to `data/processed/` and can be reused across training runs. The cache is checked before regenerating.
-
-## 🔧 Troubleshooting Data Collection Issues
-
-### Common Errors and Solutions
-
-#### "No timezone found, symbol may be delisted"
-This error indicates that Yahoo Finance cannot find data for a symbol, typically because:
-- The symbol is delisted or no longer trades
-- The symbol format is incorrect (e.g., missing .AX suffix for ASX stocks)
-- The symbol has been renamed or merged with another company
-
-**Solutions:**
-- Use verified symbol lists (enable `--use-verified-symbols` flag)
-- Check symbol format matches exchange conventions
-- Filter symbols before download using `validate_symbols_before_download()`
-
-#### "Expecting value: line 1 column 1 (char 0)"
-This JSON parsing error typically indicates:
-- Yahoo Finance API rate limiting
-- Network connectivity issues
-- API service outage
-
-**Solutions:**
-- Reduce batch size (use `--batch-size 5` or lower)
-- Increase sleep time between batches (use `--sleep-between 8.0` or higher)
-- Reduce number of workers (use `--max-workers 2` or lower)
-- Wait 1 hour and try again (rate limits are temporary)
-- Use cached data if available (`allow_cached_data: true`)
-
-#### High Failure Rate (>50%)
-If most symbols fail to download:
-- **API Rate Limiting**: Reduce batch size and increase sleep times
-- **Many Delisted Symbols**: Use verified symbol lists only
-- **Network Issues**: Check internet connection
-- **API Outage**: Try again later
-
-**Recommended Settings for Slow/Unreliable Networks:**
-```bash
-python collect_training_data.py \
-  --stocks \
-  --exchanges ASX \
-  --max-stocks-symbols 10 \
-  --batch-size 2 \
-  --sleep-between 15.0 \
-  --max-workers 1
-```
-
-### Fallback Mechanisms
-
-The system includes multiple fallback mechanisms:
-
-1. **Cached Data**: Automatically uses cached data from previous runs (< 7 days old)
-2. **Verified Symbols**: Falls back to curated list of known-good symbols
-3. **Minimal Dataset**: Generates minimal dataset if all else fails (training may have reduced quality)
-
-To enable fallback:
-```yaml
-data:
-  allow_cached_data: true
-  
-data_collection:
-  fallback_strategy: "cached_then_minimal"
-  min_symbols_required: 5
-```
-
-### Manual Symbol Validation
-
-Before running training, validate symbols:
-```python
-from src.data.asx.asx_symbols import get_verified_symbols, is_symbol_likely_valid
-
-# Get verified symbols
-verified = get_verified_symbols(limit=20)
-
-# Check individual symbol
-is_valid = is_symbol_likely_valid("BHP.AX")
-```
-
-## 📚 Best Practices
-
-### Data Collection
-
-1. **Start Small**: Begin with 10-20 symbols for initial testing
-   ```bash
-   --max-stocks-symbols 20
-   ```
-
-2. **Use Verified Lists**: Enable verified symbols for production training
-   ```yaml
-   data:
-     asx:
-       use_verified_symbols_only: true
-   ```
-
-3. **Enable Caching**: Cache data to avoid repeated downloads
-   ```yaml
-   data:
-     cache_enabled: true
-     allow_cached_data: true
-   ```
-
-4. **Monitor API Status**: Check Yahoo Finance API status before large downloads
-   - Use off-peak hours when possible
-   - Monitor error logs for rate limiting patterns
-
-5. **Conservative Settings**: Use conservative batch sizes and sleep times
-   ```yaml
-   data:
-     asx:
-       batch_size: 5
-       sleep_between: 8.0
-       max_workers: 2
-   ```
-
-### Symbol Selection
-
-1. **Preferred Sources** (in order):
-   - Verified symbol lists (`get_verified_symbols()`)
-   - ASX 200 symbols (highly liquid)
-   - Custom curated lists
-
-2. **Avoid**:
-   - Recently delisted symbols
-   - Symbols with low liquidity
-   - Symbols with unusual naming patterns
-
-### Error Handling
-
-1. **Enable Detailed Logging**:
-   ```python
-   logging.basicConfig(level=logging.INFO)
-   ```
-
-2. **Save Failed Symbols**: Check `logs/failed_symbols.txt` after failures
-
-3. **Review Logs**: Check `logs/data_download.log` for detailed error information
-
-4. **Incremental Testing**: Test with small symbol counts before full runs
-
-### Training with Partial Data
-
-The system can train with partial data:
-- Minimum 5 symbols required (configurable via `min_symbols_required`)
-- Training quality may be reduced with fewer symbols
-- Use cached data to supplement missing symbols
-
----
-
-## Troubleshooting Data Collection Issues
-
-### Common Errors and Solutions
-
-#### "No timezone found, symbol may be delisted"
-**Cause**: The symbol is no longer actively traded on the exchange.  
-**Solution**: 
-- The system automatically skips delisted symbols
-- Use the `--use-verified-asx` flag to filter to known active stocks
-- Check the symbol list against current exchange listings
-
-#### "Expecting value: line 1 column 1 (char 0)"
-**Cause**: Yahoo Finance API rate limiting or service outage.  
-**Solution**:
-- Reduce `--batch-size` to 3 or less
-- Increase `--sleep-between` to 10+ seconds
-- Set `--max-workers` to 1 for sequential downloads
-- Wait a few minutes and retry
-
-#### "'dict' object has no attribute 'empty'"
-**Cause**: Type mismatch bug (fixed in current version).  
-**Solution**: 
-- Update to latest version of the code
-- If issue persists, check that all dependencies are updated
-- Report as bug with full traceback
-
-#### "Connection timeout" or "Read timed out"
-**Cause**: Network issues or API overload.  
-**Solution**:
-- Check internet connection stability
-- Increase timeout values in configuration
-- Use cached data from previous runs
-- Try again during off-peak hours
-
-### Recovery Procedures
-
-#### Step 1: Use Conservative Settings
-```bash
-python collect_training_data.py --stocks --exchanges ASX \
-  --max-stocks-symbols 20 \
-  --batch-size 3 \
-  --sleep-between 10.0 \
-  --max-workers 1
-```
-
-#### Step 2: Use Verified Symbols (if available)
-```bash
-# If --use-verified-asx flag is supported
-python collect_training_data.py --stocks --exchanges ASX --use-verified-asx \
-  --max-stocks-symbols 20 --batch-size 3 --sleep-between 10.0 --max-workers 1
-```
-
-#### Step 3: Use Cached Data
-If live collection fails, the system will automatically fallback to cached data from previous runs stored in `data/processed/`.
-
-#### Step 4: Minimal Fallback
-If no cache exists, the system will attempt to download a minimal verified symbol set (top 10 ASX stocks).
-
----
-
-## Quick Start for Reliable Training
-
-### Recommended Settings
-
-For reliable data collection, use these conservative settings:
-
-```yaml
-data:
-  symbols: []  # Empty list triggers ASX collection
-  max_symbols: 20  # Small number for reliability
-  cache_enabled: true
-  allow_cached_data: true
-  
-asx:
-  use_verified_symbols_only: true
-  max_symbols: 20
-  batch_size: 3
-  sleep_between: 10.0
-  max_workers: 1
-
-data_collection:
-  fallback_strategy: "cached_then_minimal"
-  min_symbols_required: 5
-  use_verified_symbols_only: true
-  max_consecutive_failures: 10
-  circuit_breaker_cooldown_seconds: 60
-  enable_symbol_validation: true
-  validation_sample_size: 10
-```
-
-### Example Command
-
-```bash
-# Start with minimal configuration
-python train.py --config config/production_config.yaml --experiment wealtharena_production --local
-
-# The system will automatically:
-# 1. Try to collect ASX stock data with conservative settings
-# 2. Fallback to cached data if live collection fails
-# 3. Use minimal verified symbol set if no cache exists
-# 4. Proceed with training if at least 5 symbols are available
-```
-
-### Fallback Mechanisms
-
-The system uses a multi-layer fallback strategy:
-
-1. **Layer 1**: Try live data collection with validated symbols
-2. **Layer 2**: If live collection fails, use cached data from `data/processed/`
-3. **Layer 3**: If no cache, use minimal verified symbol set (top 10 ASX stocks)
-4. **Layer 4**: If all else fails, log error and suggest checking logs
-
-Check the logs to see which layer was used:
-- `[FALLBACK] Loaded X symbols from cache` - Layer 2 active
-- `[FALLBACK] Using X verified symbols` - Layer 3 active
-- Error messages with recommendations - Manual intervention needed
-
----
-
-**WealthArena RL System** - Empowering intelligent portfolio management through reinforcement learning.
+- Core frameworks: Stable-Baselines3, Ray RLlib, FinRL, PyPortfolioOpt, LangGraph, Backtrader, BentoML.
+- Data providers: Yahoo Finance, Alpha Vantage, FRED, CCXT exchanges, Reddit, Twitter.
+- NLP models: ProsusAI/FinBERT, finiteautomata/BERTweet.
+- Research inspirations and implementation guidance consolidated from `EXISTING IMPLEMENTATION & RESOURCES.txt`.

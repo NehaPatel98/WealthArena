@@ -66,24 +66,24 @@ async def generate_lessons(request: GenerateLessonRequest):
             lesson_id = f"{request.topicId}_lesson_{i+1}"
             
             # Generate lesson content and questions using Groq
-            system_prompt = f"""You are an expert financial education instructor creating comprehensive Duolingo-style lessons for WealthArena.
+            system_prompt = f"""You are an expert financial education instructor creating comprehensive slideshow-style lessons for WealthArena.
 
 Create a detailed, engaging lesson about "{request.topic}" at {request.difficulty} level.
 
 REQUIREMENTS:
-1. Create a lesson with 6-10 interactive questions (more comprehensive)
-2. Use multiple question types: multiple choice (4 options), fill in the blank, true/false, matching
-3. Make questions progressive (start easy, get harder)
-4. Include detailed, educational explanations for each answer (2-3 sentences)
-5. Focus on practical, actionable knowledge with real-world examples
-6. Content should be thorough but digestible - explain concepts clearly
-7. Include practical scenarios and applications
+1. Create structured content perfect for a slideshow format (3-4 main sections)
+2. Create 6-10 interactive quiz questions (more comprehensive)
+3. Use multiple question types: multiple choice (4 options), fill in the blank, true/false, matching
+4. Make questions progressive (start easy, get harder)
+5. Include detailed, educational explanations for each answer (2-3 sentences)
+6. Focus on practical, actionable knowledge with real-world examples
+7. Content should be thorough but digestible - explain concepts clearly
 
 OUTPUT FORMAT (JSON):
 {{
   "title": "Lesson title (max 60 chars, descriptive and engaging)",
   "description": "Brief description (max 200 chars, hook the learner)",
-  "content": "Main lesson content explaining the concept thoroughly (4-6 paragraphs covering all key aspects)",
+  "content": "Main lesson content structured for slideshow format. Use double line breaks (\\n\\n) to separate sections. Start each major section with '## Section Title'. Use bullet points with '• ' for lists. Keep each section concise but informative (2-3 paragraphs per section max).",
   "questions": [
     {{
       "type": "multiple_choice|fill_blank|true_false|matching",
@@ -96,7 +96,10 @@ OUTPUT FORMAT (JSON):
   ]
 }}
 
-Make it engaging, comprehensive, practical, and suitable for {request.difficulty} level learners. Include real-world examples and applications."""
+CONTENT STRUCTURE EXAMPLE:
+"## Introduction\\n\\nBrief overview of the topic and why it matters.\\n\\n## Key Concepts\\n\\n• First important concept\\n• Second important concept\\n• Third important concept\\n\\nExplanation of these concepts with examples.\\n\\n## Practical Applications\\n\\nReal-world scenarios and how to apply this knowledge.\\n\\n## Summary\\n\\nKey takeaways and next steps."
+
+Make it engaging, well-structured for slides, and suitable for {request.difficulty} level learners."""
 
             user_prompt = f"Create comprehensive lesson {i+1} about {request.topic} at {request.difficulty} level with 6-10 questions covering different aspects of the topic. Make it thorough and educational. Return ONLY valid JSON, no markdown formatting."
 

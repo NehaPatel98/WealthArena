@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Animated, Dimensions } from 'react-native';
+import { View, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Animated, Dimensions, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useUser } from '@/contexts/UserContext';
@@ -273,10 +273,14 @@ export default function OnboardingScreen() {
         try {
           const { apiService } = await import('@/services/apiService');
           await apiService.completeUserOnboarding({
+            sessionId: sessionId || 'fallback-session',
             conversationHistory: [],
             userAnswers: [],
             userProfile: userProfile || {},
-            selectedAvatar: userProfile?.selectedAvatar,
+            selectedAvatar: userProfile?.selectedAvatar || {
+              type: 'mascot',
+              variant: 'excited'
+            },
           });
           console.log('Backend completion succeeded without session');
         } catch (error) {
@@ -523,36 +527,38 @@ export default function OnboardingScreen() {
             {/* Choice Options */}
             {currentQuestion.questionType === 'choice' && currentQuestion.options && (
               <View style={styles.optionsContainer}>
-                {currentQuestion.options.map((option) => (
-                  <Button
-                    key={option}
-                    variant="secondary"
-                    size="medium"
-                    onPress={() => handleChoice(option)}
-                    fullWidth
-                    style={styles.optionButton}
-                  >
-                    {option}
-                  </Button>
-                ))}
+                <View style={styles.optionsGrid}>
+                  {currentQuestion.options.map((option) => (
+                    <Button
+                      key={option}
+                      variant="secondary"
+                      size="medium"
+                      onPress={() => handleChoice(option)}
+                      style={styles.optionButton}
+                    >
+                      {option.replace(/_/g, ' ')}
+                    </Button>
+                  ))}
+                </View>
               </View>
             )}
 
             {/* Multi-select Options */}
             {currentQuestion.questionType === 'multi' && currentQuestion.options && (
               <View style={styles.optionsContainer}>
-                {currentQuestion.options.map((option) => (
-                  <Button
-                    key={option}
-                    variant={selectedOptions.includes(option) ? "primary" : "secondary"}
-                    size="medium"
-                    onPress={() => handleChoice(option)}
-                    fullWidth
-                    style={styles.optionButton}
-                  >
-                    {option}
-                  </Button>
-                ))}
+                <View style={styles.optionsGrid}>
+                  {currentQuestion.options.map((option) => (
+                    <Button
+                      key={option}
+                      variant={selectedOptions.includes(option) ? "primary" : "secondary"}
+                      size="medium"
+                      onPress={() => handleChoice(option)}
+                      style={styles.optionButton}
+                    >
+                      {option.replace(/_/g, ' ')}
+                    </Button>
+                  ))}
+                </View>
                 {selectedOptions.length > 0 && (
                   <Button
                     variant="primary"
@@ -570,25 +576,30 @@ export default function OnboardingScreen() {
             {/* Text Input - Show for text questions OR welcome messages */}
             {(currentQuestion.questionType === 'text' || currentQuestion.type === 'explanation' || !currentQuestion.questionType) && (
               <View style={styles.textInputContainer}>
-                <TextInput
-                  placeholder="Type your answer here..."
-                  value={textInput}
-                  onChangeText={setTextInput}
-                  autoCapitalize="words"
-                  onSubmitEditing={handleTextSubmit}
-                  returnKeyType="done"
-                  style={styles.textInput}
-                  multiline={false}
-                />
-                <Button
-                  variant="primary"
-                  size="medium"
+                <View style={styles.inputWrapper}>
+                  <TextInput
+                    placeholder="Type your answer here..."
+                    value={textInput}
+                    onChangeText={setTextInput}
+                    autoCapitalize="sentences"
+                    onSubmitEditing={handleTextSubmit}
+                    returnKeyType="done"
+                    style={styles.textInput}
+                    multiline={false}
+                  />
+                </View>
+                <Pressable
                   onPress={handleTextSubmit}
+                  style={[
+                    styles.submitButton,
+                    { backgroundColor: textInput.trim() ? theme.primary : theme.border }
+                  ]}
                   disabled={!textInput.trim()}
-                  style={styles.submitButton}
                 >
-                  Send
-                </Button>
+                  <Text variant="small" weight="semibold" style={{ color: '#FFFFFF' }}>
+                    Send
+                  </Text>
+                </Pressable>
               </View>
             )}
 
@@ -865,6 +876,7 @@ const styles = StyleSheet.create({
   },
   keyboardView: {
     flex: 1,
+    justifyContent: 'space-between',
   },
   
   // Loading Screen
@@ -887,10 +899,13 @@ const styles = StyleSheet.create({
   header: {
     padding: tokens.spacing.md,
     borderBottomWidth: 1,
+    alignItems: 'center',
     // borderBottomColor will be set dynamically via theme.border
   },
   progressContainer: {
     gap: tokens.spacing.sm,
+    alignItems: 'center',
+    width: '100%',
   },
   progressBg: {
     height: 8,
@@ -909,9 +924,11 @@ const styles = StyleSheet.create({
   chatContent: {
     padding: tokens.spacing.md,
     gap: tokens.spacing.md,
+    alignItems: 'stretch', // Ensure messages can take full width
   },
   messageContainer: {
     marginBottom: tokens.spacing.sm,
+    width: '100%',
   },
   
   // Bot Messages
@@ -919,6 +936,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: tokens.spacing.sm,
+    width: '100%',
+    paddingHorizontal: tokens.spacing.xs,
   },
   botAvatar: {
     width: 40,
@@ -926,6 +945,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: tokens.spacing.xs,
+    flexShrink: 0, // Prevent avatar from shrinking
   },
   botBubble: {
     flex: 1,
@@ -942,6 +962,8 @@ const styles = StyleSheet.create({
   userMessage: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
+    width: '100%',
+    paddingHorizontal: tokens.spacing.xs,
   },
   userBubble: {
     maxWidth: screenWidth * 0.75,
@@ -973,30 +995,70 @@ const styles = StyleSheet.create({
   inputSection: {
     padding: tokens.spacing.md,
     borderTopWidth: 1,
+    alignItems: 'center',
     // borderTopColor and backgroundColor will be set dynamically via theme
   },
   optionsContainer: {
     gap: tokens.spacing.sm,
     marginBottom: tokens.spacing.md,
+    alignItems: 'center',
+  },
+  optionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: tokens.spacing.sm,
+    justifyContent: 'center',
+    width: '100%',
   },
   optionButton: {
     marginBottom: tokens.spacing.xs,
+    minWidth: screenWidth < 400 ? '45%' : 'auto', // Responsive sizing
+    maxWidth: screenWidth < 400 ? '45%' : '48%',
+    flexGrow: 1,
+    flexShrink: 0,
   },
   textInputContainer: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: tokens.spacing.sm,
-    alignItems: 'flex-end',
+    paddingHorizontal: tokens.spacing.xs,
+  },
+  inputWrapper: {
+    flex: 1,
+    justifyContent: 'center',
   },
   textInput: {
-    flex: 1,
+    minHeight: 44,
+    maxHeight: 100,
+    textAlignVertical: 'center',
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      maxHeight: 48,
+      minHeight: 48,
+      fontSize: 16,
+      lineHeight: 20,
+      paddingVertical: tokens.spacing.sm,
+      paddingHorizontal: tokens.spacing.md,
+      textAlignVertical: 'center',
+      borderRadius: tokens.radius.md,
+      borderWidth: 1,
+      borderColor: 'transparent',
+    }),
   },
   submitButton: {
-    minWidth: 80,
+    minWidth: 60,
+    height: 44,
+    borderRadius: tokens.radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: tokens.spacing.md,
+    flexShrink: 0,
   },
   actionButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: tokens.spacing.sm,
+    width: '100%',
   },
   backButton: {
     flex: 1,

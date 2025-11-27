@@ -169,6 +169,15 @@ export function UserProvider({ children }: Readonly<{ children: React.ReactNode 
         await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
       }
     } catch (error) {
+      // If user not found (404), this is expected when user was deleted or mock DB was cleared
+      // Handle it gracefully without logging as an error
+      if (error instanceof Error && error.message.includes('Resource not found')) {
+        console.warn('User not found in backend, clearing cached data and logging out');
+        await logout();
+        return; // Exit early - don't log as error
+      }
+      
+      // Only log unexpected errors
       console.error('Failed to refresh user data:', error);
     }
   };
@@ -190,6 +199,15 @@ export function UserProvider({ children }: Readonly<{ children: React.ReactNode 
         }
       }
     } catch (error) {
+      // If user not found (404), this is expected when user was deleted or mock DB was cleared
+      // Handle it gracefully without logging as an error
+      if (error instanceof Error && error.message.includes('Resource not found')) {
+        console.warn('User not found in backend during rank refresh, clearing cached data and logging out');
+        await logout();
+        return; // Exit early - don't log as error
+      }
+      
+      // Only log unexpected errors
       console.error('Failed to refresh user rank:', error);
     }
   };

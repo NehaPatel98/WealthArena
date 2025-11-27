@@ -143,28 +143,50 @@ class RLAgentService {
    */
   async getMarketData(symbols: string[], days: number = 30): Promise<MarketDataResponse> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/market-data`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          symbols,
-          days,
-        }),
-      });
+      // Use AbortSignal with timeout to prevent hanging requests
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 seconds
 
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error('RL API endpoint not found. Please check if the service is running.');
+      try {
+        const response = await fetch(`${this.baseUrl}/api/market-data`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            symbols,
+            days,
+          }),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          if (response.status === 404) {
+            throw new Error('RL API endpoint not found. Please check if the service is running.');
+          }
+          throw new Error(`RL API error: ${response.status} ${response.statusText}`);
         }
-        throw new Error(`RL API error: ${response.status} ${response.statusText}`);
-      }
 
-      const data = await response.json();
-      return data;
+        const data = await response.json();
+        return data;
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        
+        // Check if it's a timeout/abort error
+        if (fetchError instanceof Error && (fetchError.name === 'AbortError' || fetchError.message.includes('timeout'))) {
+          console.warn('Market data request timed out - using fallback data');
+          throw new Error('Request timeout - market data service may be slow or unavailable');
+        }
+        
+        throw fetchError;
+      }
     } catch (error) {
-      console.error('Error getting market data:', error);
+      // Only log unexpected errors, not timeouts
+      if (error instanceof Error && !error.message.includes('timeout')) {
+        console.error('Error getting market data:', error);
+      }
       
       // Return fallback data
       return {
@@ -181,28 +203,51 @@ class RLAgentService {
    */
   async getPrediction(symbol: string, horizon: number = 1): Promise<PredictionResponse> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/predictions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          symbol,
-          horizon,
-        }),
-      });
+      // Use AbortSignal with timeout to prevent hanging requests
+      // Predictions can take longer, so use 30 seconds timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds
 
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error('RL API endpoint not found. Please check if the service is running.');
+      try {
+        const response = await fetch(`${this.baseUrl}/api/predictions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            symbol,
+            horizon,
+          }),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          if (response.status === 404) {
+            throw new Error('RL API endpoint not found. Please check if the service is running.');
+          }
+          throw new Error(`RL API error: ${response.status} ${response.statusText}`);
         }
-        throw new Error(`RL API error: ${response.status} ${response.statusText}`);
-      }
 
-      const data = await response.json();
-      return data;
+        const data = await response.json();
+        return data;
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        
+        // Check if it's a timeout/abort error
+        if (fetchError instanceof Error && (fetchError.name === 'AbortError' || fetchError.message.includes('timeout'))) {
+          console.warn(`Prediction request timed out for ${symbol} - using fallback data`);
+          throw new Error('Request timeout - prediction service may be slow or unavailable');
+        }
+        
+        throw fetchError;
+      }
     } catch (error) {
-      console.error('Error getting prediction:', error);
+      // Only log unexpected errors, not timeouts (which are handled gracefully)
+      if (error instanceof Error && !error.message.includes('timeout')) {
+        console.error('Error getting prediction:', error);
+      }
       
       // Return fallback prediction
       return {
@@ -227,29 +272,51 @@ class RLAgentService {
     risk_tolerance: 'low' | 'medium' | 'high' = 'medium'
   ): Promise<TopSetupsResponse> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/top-setups`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          asset_type,
-          count,
-          risk_tolerance,
-        }),
-      });
+      // Use AbortSignal with timeout to prevent hanging requests
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds
 
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error('RL API endpoint not found. Please check if the service is running.');
+      try {
+        const response = await fetch(`${this.baseUrl}/api/top-setups`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            asset_type,
+            count,
+            risk_tolerance,
+          }),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          if (response.status === 404) {
+            throw new Error('RL API endpoint not found. Please check if the service is running.');
+          }
+          throw new Error(`RL API error: ${response.status} ${response.statusText}`);
         }
-        throw new Error(`RL API error: ${response.status} ${response.statusText}`);
-      }
 
-      const data = await response.json();
-      return data;
+        const data = await response.json();
+        return data;
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        
+        // Check if it's a timeout/abort error
+        if (fetchError instanceof Error && (fetchError.name === 'AbortError' || fetchError.message.includes('timeout'))) {
+          console.warn('Top setups request timed out - using fallback data');
+          throw new Error('Request timeout - setup service may be slow or unavailable');
+        }
+        
+        throw fetchError;
+      }
     } catch (error) {
-      console.error('Error getting top setups:', error);
+      // Only log unexpected errors, not timeouts
+      if (error instanceof Error && !error.message.includes('timeout')) {
+        console.error('Error getting top setups:', error);
+      }
       
       // Check if it's a network error
       if (error instanceof TypeError && error.message.includes('Network request failed')) {

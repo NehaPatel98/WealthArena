@@ -1,3 +1,0 @@
-Data collection failed at 2025-11-02T18:02:30.149486
-Error: name 'YAHOO_FINANCE_AVAILABLE' is used prior to global declaration (collect_training_data.py, line 2118)
-Symbols requested: ['AAPL', 'GOOGL', 'MSFT', 'TSLA', 'AMZN', 'NVDA', 'META', 'NFLX', 'AMD', 'INTC', 'JPM', 'JNJ', 'V', 'PG']

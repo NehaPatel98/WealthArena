@@ -1,16 +1,31 @@
 """
-WealthArena Trading Environments
-
-This module contains the trading environment implementations for the WealthArena
-multi-agent trading system, including both single-agent and multi-agent environments.
+Trading environment package wrapping Gym-compatible environments.
 """
 
-from .trading_env import WealthArenaTradingEnv
-from .multi_agent_env import WealthArenaMultiAgentEnv
-from .market_simulator import MarketSimulator
+from .trading_env import (
+    TradingEnv,
+    StockTradingEnv,
+    ForexTradingEnv,
+    CryptoTradingEnv,
+    ETFTradingEnv,
+    CommodityTradingEnv,
+    OptionsTradingEnv,
+    VectorizedTradingEnv,
+)
+from .portfolio_env import PortfolioEnv, MultiAssetPortfolioEnv
+from .builders import build_trading_env, build_portfolio_env
 
 __all__ = [
-    "WealthArenaTradingEnv",
-    "WealthArenaMultiAgentEnv", 
-    "MarketSimulator"
+    "TradingEnv",
+    "StockTradingEnv",
+    "ForexTradingEnv",
+    "CryptoTradingEnv",
+    "ETFTradingEnv",
+    "CommodityTradingEnv",
+    "OptionsTradingEnv",
+    "VectorizedTradingEnv",
+    "PortfolioEnv",
+    "MultiAssetPortfolioEnv",
+    "build_trading_env",
+    "build_portfolio_env",
 ]

@@ -1235,12 +1235,15 @@ function Invoke-Phase4-Services {
                 $processIds = $connections | Select-Object -ExpandProperty OwningProcess -Unique
                 foreach ($pid in $processIds) {
                     try {
+                        # Get process name for better logging
+                        $processName = (Get-Process -Id $pid -ErrorAction SilentlyContinue).ProcessName
                         Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
                         $cleanedPorts += $port
-                        Write-StatusMessage "Terminated process $pid on port $port" "INFO"
+                        Write-StatusMessage "Terminated process $pid ($processName) on port $port" "INFO"
                     }
                     catch {
                         # Process may have already terminated
+                        Write-StatusMessage "Could not terminate process $pid on port $port (may have already stopped)" "WARNING"
                     }
                 }
             }
@@ -1313,21 +1316,58 @@ function Invoke-Phase4-Services {
     }
     
     # Start Chatbot
-    Write-StatusMessage "Starting Chatbot service (Direct GroQ API)..." "INFO"
+    Write-StatusMessage "Starting Chatbot service (DeepSeek API via OpenRouter)..." "INFO"
     try {
         $chatbotDir = Join-Path $script:ScriptDir "chatbot"
-        $chatbotCmd = "cd '$chatbotDir'; python -m app.main"
-        Start-Process powershell -ArgumentList '-NoExit', '-Command', $chatbotCmd
-        Start-Sleep -Seconds 5
         
-        if (Test-ServiceHealth "http://localhost:8000/health") {
-            Write-StatusMessage "Chatbot service is running" "SUCCESS"
-            $serviceStatus.Chatbot = $true
+        # Ensure port 8000 is completely free before starting
+        Write-StatusMessage "Ensuring port 8000 is available for chatbot..." "INFO"
+        Start-Sleep -Seconds 2
+        
+        # Double-check port is free
+        $portCheck = Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue
+        if ($portCheck) {
+            Write-StatusMessage "Port 8000 still in use, attempting additional cleanup..." "WARNING"
+            $processIds = $portCheck | Select-Object -ExpandProperty OwningProcess -Unique
+            foreach ($processId in $processIds) {
+                try {
+                    Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
+                    Write-StatusMessage "Force-killed remaining process $processId on port 8000" "INFO"
+                }
+                catch {
+                    Write-StatusMessage "Could not kill process $processId" "WARNING"
+                }
+            }
+            Start-Sleep -Seconds 3
+        }
+        
+        # Use a more robust approach to start the chatbot with proper working directory
+        $chatbotCmd = @"
+Set-Location '$chatbotDir'
+python -m app.main
+"@
+        Start-Process powershell -ArgumentList '-NoExit', '-Command', $chatbotCmd
+        
+        # Wait longer for chatbot to start (it needs time to initialize)
+        Write-StatusMessage "Waiting for chatbot to initialize..." "INFO"
+        Start-Sleep -Seconds 8
+        
+        # Try both health endpoints
+        $chatbotReady = $false
+        if (Test-ServiceHealth "http://localhost:8000/healthz") {
+            Write-StatusMessage "Chatbot service is running (healthz endpoint)" "SUCCESS"
+            $chatbotReady = $true
+        }
+        elseif (Test-ServiceHealth "http://localhost:8000/health") {
+            Write-StatusMessage "Chatbot service is running (health endpoint)" "SUCCESS"
+            $chatbotReady = $true
         }
         else {
-            Write-StatusMessage "Chatbot service may not be ready yet" "WARNING"
-            $serviceStatus.Chatbot = $false
+            Write-StatusMessage "Chatbot service may not be ready yet (check chatbot console window)" "WARNING"
+            Write-StatusMessage "Chatbot may still be starting - continuing anyway" "INFO"
         }
+        
+        $serviceStatus.Chatbot = $chatbotReady
     }
     catch {
         Write-StatusMessage "Error starting Chatbot: $_" "ERROR"

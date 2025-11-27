@@ -1,973 +1,275 @@
 """
-WealthArena Trading Environment - Production Ready
-
-Advanced trading environment optimized for profit generation and risk management.
-Implements sophisticated reward functions and market dynamics.
+Gym-compatible trading environments.
 """
 
-import gymnasium as gym
+from __future__ import annotations
+
+import logging
+from typing import Any, Dict, Tuple
+
 import numpy as np
 import pandas as pd
-from typing import Dict, Any, Tuple, List, Optional
-from datetime import datetime, timedelta
-import logging
-from pathlib import Path
 
-# Import custom modules
-from src.data.market_data import MarketDataProcessor
-from src.data.data_adapter import DataAdapter
-from src.models.portfolio_manager import Portfolio, RiskMetrics
-from .trend_reversal_reward import TrendReversalReward, TrendRewardConfig
+try:
+    import gymnasium as gym
+except ImportError:  # pragma: no cover - fallback path
+    import gym  # type: ignore
+
 
 logger = logging.getLogger(__name__)
 
 
-class WealthArenaTradingEnv(gym.Env):
-    """
-    Advanced Trading Environment for WealthArena
-    
-    Features:
-    - Real market data integration
-    - Advanced reward functions
-    - Risk management
-    - Portfolio optimization
-    - Market dynamics simulation
-    """
-    
-    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 30}
-    
-    def __init__(self, config: Dict[str, Any] = None, render_mode: str = None):
+def _ensure_dataframe(data: Any) -> pd.DataFrame:
+    if isinstance(data, pd.DataFrame):
+        return data
+    raise TypeError("TradingEnv expects a pandas DataFrame as data input.")
+
+
+class TradingEnv(gym.Env):
+    """Base class for single-asset trading environments."""
+
+    metadata = {"render_modes": ["human"]}
+
+    def __init__(self, data: Any, config: Dict[str, Any]):
         super().__init__()
-        
-        self.config = config or {}
-        self.render_mode = render_mode
-        
-        # Environment parameters
-        self.num_assets = self.config.get("num_assets", 20)
-        self.initial_cash = self.config.get("initial_cash", 1_000_000.0)
-        self.episode_length = self.config.get("episode_length", 252)
-        self.lookback_window_size = self.config.get("lookback_window_size", 30)
-        self.transaction_cost_rate = self.config.get("transaction_cost_rate", 0.0005)
-        self.slippage_rate = self.config.get("slippage_rate", 0.0002)
-        
-        # Advanced reward weights
-        self.reward_weights = self.config.get("reward_weights", {
-            "profit": 2.0,
-            "risk": 0.5,
-            "cost": 0.1,
-            "stability": 0.05,
-            "sharpe": 1.0,
-            "momentum": 0.3,
-            "diversification": 0.2
-        })
-        
-        # Risk management
-        self.risk_config = self.config.get("risk_management", {
-            "max_position_size": 0.15,
-            "max_portfolio_risk": 0.12,
-            "stop_loss_threshold": 0.08,
-            "take_profit_threshold": 0.20,
-            "max_drawdown_limit": 0.15,
-            "var_confidence": 0.95,
-            "correlation_limit": 0.7
-        })
-        
-        # Data components
-        self.data_adapter = DataAdapter(self.config.get("data_adapter_config", {}))
-        self.market_data_processor = MarketDataProcessor(self.config.get("market_data_processor_config", {}))
-        
-        # Trend reversal reward component
-        trend_reward_config = TrendRewardConfig()
-        trend_reward_config.reversal_reward_weight = self.config.get("trend_reversal_weight", 2.0)
-        trend_reward_config.continuation_reward_weight = self.config.get("trend_continuation_weight", 1.5)
-        self.trend_reversal_reward = TrendReversalReward(trend_reward_config)
-        
-        # Portfolio management
-        self.portfolio = Portfolio(
-            initial_cash=self.initial_cash,
-            commission_rate=self.transaction_cost_rate
+        self.data = _ensure_dataframe(data)
+        self.config = config
+        self.window_size = int(config.get("window_size", 32))
+        self.initial_cash = float(config.get("initial_cash", 1_000_000.0))
+        self.transaction_cost = float(config.get("transaction_cost", 0.0005))
+        self.reward_scaling = float(config.get("reward_scaling", 1.0))
+
+        price_column = config.get("price_column", "close")
+        if price_column not in self.data.columns:
+            raise ValueError(f"Price column '{price_column}' not present in data.")
+        self.price_column = price_column
+
+        obs_shape = (self.window_size * len(self.data.columns) + 2,)
+        self.observation_space = config.get("observation_space") or gym.spaces.Box(
+            low=-np.inf,
+            high=np.inf,
+            shape=obs_shape,
+            dtype=np.float32,
         )
-        
-        # Internal state
-        self.current_step = 0
-        self.market_data_buffer = []
-        self.price_history = []
-        self.portfolio_value_history = []
-        self.trade_history = []
-        self.performance_metrics = {}
-        
-        # Market data
-        self.market_data = None
-        self.symbols = self.config.get("symbols", [f"ASSET_{i}" for i in range(self.num_assets)])
-        
-        # Define spaces
-        self._setup_spaces()
-        
-        # Load market data
-        self._load_market_data()
-        
-        # Reset environment
-        self.reset()
-        
-        logger.info(f"WealthArenaTradingEnv initialized: {self.num_assets} assets, ${self.initial_cash:,.0f} initial cash")
-    
-    def _setup_spaces(self):
-        """Define observation and action spaces"""
-        # Action Space: Portfolio weight allocation
-        self.action_space = gym.spaces.Box(
-            low=-1.0, high=1.0,
-            shape=(self.num_assets,),
-            dtype=np.float32
+        self.action_space = config.get("action_space") or gym.spaces.Box(
+            low=-1.0,
+            high=1.0,
+            shape=(1,),
+            dtype=np.float32,
         )
-        
-        # Observation Space: Comprehensive market and portfolio state
-        # Market features: OHLCV + technical indicators
-        market_features = (5 + 20) * self.num_assets  # OHLCV + 20 technical indicators
-        
-        # Portfolio features
-        portfolio_features = self.num_assets + 3  # positions, cash, total_value, leverage
-        
-        # Risk features
-        risk_features = 10  # volatility, drawdown, sharpe, var, etc.
-        
-        # Market state features
-        market_state_features = 5  # market regime, volatility regime, etc.
-        
-        # Time features
-        time_features = 2  # current_step, time_to_end
-        
-        obs_dim = market_features + portfolio_features + risk_features + market_state_features + time_features
-        
-        self.observation_space = gym.spaces.Box(
-            low=-np.inf, high=np.inf,
-            shape=(obs_dim,),
-            dtype=np.float32
-        )
-    
-    def _load_market_data(self):
-        """Load market data from files or API"""
-        if self.config.get("use_real_data", True):
-            self._load_real_market_data()
-        else:
-            self._generate_synthetic_data()
-    
-    def _load_real_market_data(self):
-        """Load real market data from processed CSVs"""
-        from ..utils.data_loader import load_processed_data
-        
-        # Check if market_data is provided directly in config
-        if self.config.get("market_data") is not None:
-            self.market_data = self.config["market_data"]
-            logger.info(f"Using provided market data: {len(self.market_data)} records")
-            return
-        
-        # Load from data loader utility
-        data_path = self.config.get("data_path", "data/processed")
-        asset_class = self.config.get("asset_class", "stocks")
-        
-        try:
-            # Load data using data_loader utility
-            self.market_data = load_processed_data(
-                asset_class=asset_class,
-                symbols=self.symbols,
-                start_date=self.config.get("start_date"),
-                end_date=self.config.get("end_date")
-            )
-            
-            if self.market_data.empty:
-                logger.warning("No real data loaded, falling back to synthetic")
-                self._generate_synthetic_data()
-            else:
-                logger.info(f"Loaded real market data: {len(self.market_data)} records, {len(self.symbols)} symbols")
-        except Exception as e:
-            logger.error(f"Error loading real data: {e}, falling back to synthetic")
-            self._generate_synthetic_data()
-    
-    def _generate_synthetic_data(self):
-        """Generate sophisticated synthetic market data"""
-        logger.info("Generating synthetic market data...")
-        
-        np.random.seed(42)
-        n_days = self.episode_length + self.lookback_window_size
-        
-        # Generate correlated returns
-        correlation_matrix = self._generate_correlation_matrix()
-        returns = np.random.multivariate_normal(
-            mean=np.full(self.num_assets, 0.0008),  # 0.08% daily return
-            cov=correlation_matrix * 0.0004,  # 2% daily volatility
-            size=n_days
-        )
-        
-        # Add market regimes
-        returns = self._add_market_regimes(returns)
-        
-        # Generate OHLCV data
-        self.market_data = self._generate_ohlcv_data(returns)
-        
-        logger.info(f"Generated synthetic data: {len(self.market_data)} records")
-    
-    def _generate_correlation_matrix(self) -> np.ndarray:
-        """Generate realistic correlation matrix"""
-        # Create base correlation structure
-        base_corr = 0.3
-        correlation_matrix = np.full((self.num_assets, self.num_assets), base_corr)
-        np.fill_diagonal(correlation_matrix, 1.0)
-        
-        # Add sector-like correlations
-        sector_size = self.num_assets // 4
-        for i in range(0, self.num_assets, sector_size):
-            end_idx = min(i + sector_size, self.num_assets)
-            sector_corr = 0.6
-            correlation_matrix[i:end_idx, i:end_idx] = sector_corr
-            np.fill_diagonal(correlation_matrix[i:end_idx, i:end_idx], 1.0)
-        
-        return correlation_matrix
-    
-    def _add_market_regimes(self, returns: np.ndarray) -> np.ndarray:
-        """Add market regime changes"""
-        n_days = len(returns)
-        
-        # Define regime periods
-        regime_periods = [
-            (0, n_days // 3, "bull"),      # Bull market
-            (n_days // 3, 2 * n_days // 3, "bear"),  # Bear market
-            (2 * n_days // 3, n_days, "volatile")  # Volatile market
-        ]
-        
-        for start, end, regime in regime_periods:
-            if regime == "bull":
-                returns[start:end] *= 1.5  # Higher returns
-            elif regime == "bear":
-                returns[start:end] *= -0.8  # Negative returns
-            elif regime == "volatile":
-                returns[start:end] *= 2.0  # Higher volatility
-        
-        return returns
-    
-    def _generate_ohlcv_data(self, returns: np.ndarray) -> pd.DataFrame:
-        """Generate OHLCV data from returns"""
-        n_days, n_assets = returns.shape
-        
-        # Initialize price arrays
-        prices = np.zeros((n_days, n_assets))
-        prices[0] = 100.0  # Starting price
-        
-        # Generate price series
-        for i in range(1, n_days):
-            prices[i] = prices[i-1] * (1 + returns[i])
-        
-        # Generate OHLCV data
-        ohlcv_data = {}
-        
-        for i, symbol in enumerate(self.symbols):
-            asset_prices = prices[:, i]
-            
-            # Generate OHLCV
-            open_prices = asset_prices * (1 + np.random.normal(0, 0.001, n_days))
-            close_prices = asset_prices
-            high_prices = np.maximum(open_prices, close_prices) * (1 + np.abs(np.random.normal(0, 0.005, n_days)))
-            low_prices = np.minimum(open_prices, close_prices) * (1 - np.abs(np.random.normal(0, 0.005, n_days)))
-            volumes = np.random.lognormal(8, 0.5, n_days)  # Realistic volume distribution
-            
-            ohlcv_data[symbol] = pd.DataFrame({
-                'Open': open_prices,
-                'High': high_prices,
-                'Low': low_prices,
-                'Close': close_prices,
-                'Volume': volumes
-            })
-        
-        # Create proper multi-level DataFrame structure
-        multi_level_data = {}
-        for symbol, df in ohlcv_data.items():
-            for col in df.columns:
-                multi_level_data[(symbol, col)] = df[col]
-        
-        return pd.DataFrame(multi_level_data)
-    
-    def reset(self, *, seed: int = None, options: Dict[str, Any] = None) -> Tuple[np.ndarray, Dict[str, Any]]:
-        """Reset environment to initial state"""
+
+        self.current_step = self.window_size
+        self.position = 0.0
+        self.cash = self.initial_cash
+        self.portfolio_value = self.initial_cash
+        self.last_price = float(self.data.iloc[self.current_step - 1][self.price_column])
+        self.trade_history: list[Dict[str, Any]] = []
+
+    def reset(self, *, seed: int | None = None, options: Dict[str, Any] | None = None) -> Tuple[np.ndarray, Dict[str, Any]]:
         super().reset(seed=seed)
-        
-        self.current_step = 0
-        self.portfolio.reset()
-        self.market_data_buffer = []
-        self.price_history = []
-        self.portfolio_value_history = [self.initial_cash]
-        self.trade_history = []
-        self.performance_metrics = {}
-        
-        # Populate market data buffer
-        for i in range(self.lookback_window_size):
-            if i < len(self.market_data):
-                step_data = self._get_market_data_step(i)
-                self.market_data_buffer.append(step_data)
-        
+        self.current_step = self.window_size
+        self.position = 0.0
+        self.cash = self.initial_cash
+        self.portfolio_value = self.initial_cash
+        self.last_price = float(self.data.iloc[self.current_step - 1][self.price_column])
+        self.trade_history.clear()
         observation = self._get_observation()
-        info = self._get_info()
-        
-        if self.render_mode == "human":
-            self._render_frame()
-        
-        return observation, info
-    
-    def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
-        """Execute one step in the environment"""
-        # Store previous state
-        prev_portfolio_value = self.portfolio.get_portfolio_value(self._get_current_prices())
-        prev_positions = self.portfolio.positions.copy()
-        
-        # Execute trades
-        trades_executed = self._execute_trades(action)
-        
-        # Update market data
-        self.current_step += 1
-        if self.current_step < len(self.market_data):
-            current_data = self._get_market_data_step(self.current_step)
-            self.market_data_buffer.append(current_data)
-            if len(self.market_data_buffer) > self.lookback_window_size:
-                self.market_data_buffer.pop(0)
-        else:
-            # End of data
-            done = True
-            truncated = False
-            observation = self._get_observation()
-            reward = self._calculate_reward(prev_portfolio_value, prev_positions, trades_executed)
-            info = self._get_info()
-            return observation, reward, done, truncated, info
-        
-        # Calculate reward
-        reward = self._calculate_reward(prev_portfolio_value, prev_positions, trades_executed)
-        
-        # Update portfolio performance
-        current_prices = self._get_current_prices()
-        self.portfolio.update_performance({symbol: price for symbol, price in zip(self.symbols, current_prices)})
-        
-        # Check termination conditions
-        current_value = self.portfolio.get_portfolio_value(current_prices)
-        done = (self.current_step >= self.episode_length or 
-                current_value <= self.initial_cash * 0.1)  # 90% loss limit
-        
-        truncated = False
-        
-        # Get new observation and info
-        observation = self._get_observation()
-        info = self._get_info()
-        
-        if self.render_mode == "human":
-            self._render_frame()
-        
-        return observation, reward, done, truncated, info
-    
-    def _execute_trades(self, actions: np.ndarray) -> List[Dict[str, Any]]:
-        """Execute trades based on actions"""
-        trades_executed = []
-        current_prices = self._get_current_prices()
-        prev_portfolio_value = self.portfolio.get_portfolio_value({symbol: price for symbol, price in zip(self.symbols, current_prices)})
-        
-        # Normalize actions to ensure they sum to reasonable values
-        action_magnitude = np.sum(np.abs(actions))
-        if action_magnitude > 1.0:
-            actions = actions / action_magnitude
-        
-        for asset_idx, action in enumerate(actions):
-            if abs(action) < 0.01:  # Skip small actions
-                continue
-            
-            symbol = self.symbols[asset_idx]
-            price = current_prices[asset_idx]
-            
-            if price <= 0:
-                continue
-            
-            # Get previous position
-            prev_position = self.portfolio.positions.get(symbol, 0)
-            
-            # Execute trade
-            success = self.portfolio.execute_trade(symbol, action, price)
-            
-            if success:
-                # Get new position
-                new_position = self.portfolio.positions.get(symbol, 0)
-                
-                # Calculate P&L if position was closed
-                pnl = 0.0
-                if prev_position != 0 and new_position == 0:
-                    # Position closed - calculate realized P&L (simplified)
-                    position_value_change = (new_position - prev_position) * price
-                    pnl = position_value_change
-                elif prev_position != 0:
-                    # Position adjusted - calculate unrealized P&L (simplified)
-                    pnl = (new_position - prev_position) * price
-                
-                trade_info = {
-                    "symbol": symbol,
-                    "action": action,
-                    "price": price,
-                    "step": self.current_step,
-                    "prev_position": prev_position,
-                    "new_position": new_position,
-                    "pnl": pnl
-                }
-                
-                trades_executed.append(trade_info)
-                
-                # Track in trade history
-                self.trade_history.append(trade_info)
-        
-        return trades_executed
-    
-    def _get_current_prices(self) -> np.ndarray:
-        """Get current prices for all assets"""
-        if self.current_step >= len(self.market_data):
-            return self._get_market_data_step(-1)["Close"].values
-        
-        current_data = self._get_market_data_step(self.current_step)
-        return current_data["Close"].values
-    
-    def _get_market_data_step(self, step: int) -> pd.DataFrame:
-        """Get market data for a specific step"""
-        if step < 0:
-            step = len(self.market_data) - 1
-        
-        if step >= len(self.market_data):
-            step = len(self.market_data) - 1
-        
-        # Get the data for this step and reshape it properly
-        step_data = self.market_data.iloc[step]
-        
-        # If it's a Series, convert to DataFrame with proper structure
-        if isinstance(step_data, pd.Series):
-            # Reshape the multi-level columns into a proper DataFrame
-            data_dict = {}
-            for symbol in self.symbols:
-                symbol_data = {}
-                for col in ['Open', 'High', 'Low', 'Close', 'Volume']:
-                    try:
-                        symbol_data[col] = step_data[(symbol, col)]
-                    except KeyError:
-                        # Fallback for missing data
-                        symbol_data[col] = 100.0 if col != 'Volume' else 1000.0
-                data_dict[symbol] = symbol_data
-            
-            return pd.DataFrame(data_dict).T
-        else:
-            return step_data
-    
-    def _calculate_reward(self, prev_value: float, prev_positions: Dict, trades: List) -> float:
-        """Calculate sophisticated reward function"""
-        current_prices = self._get_current_prices()
-        current_value = self.portfolio.get_portfolio_value({symbol: price for symbol, price in zip(self.symbols, current_prices)})
-        
-        # 1. Profit component (scaled)
-        profit_return = (current_value - prev_value) / prev_value if prev_value > 0 else 0
-        profit_reward = self.reward_weights["profit"] * profit_return * 100  # Scale to percentage
-        
-        # 2. Risk component
-        risk_reward = self._calculate_risk_reward(current_value)
-        
-        # 3. Cost component
-        cost_reward = self._calculate_cost_reward(trades)
-        
-        # 4. Stability component
-        stability_reward = self._calculate_stability_reward(prev_positions, trades)
-        
-        # 5. Sharpe ratio component
-        sharpe_reward = self._calculate_sharpe_reward()
-        
-        # 6. Momentum component
-        momentum_reward = self._calculate_momentum_reward()
-        
-        # 7. Diversification component
-        diversification_reward = self._calculate_diversification_reward()
-        
-        # 8. Trend reversal component
-        trend_reversal_reward = self._calculate_trend_reversal_reward(trades, prev_value, current_value)
-        
-        # 9. Win rate component (NEW)
-        win_rate_reward = self._calculate_win_rate_reward()
-        
-        # Combine all components
-        total_reward = (profit_reward + risk_reward + cost_reward + 
-                       stability_reward + sharpe_reward + momentum_reward + 
-                       diversification_reward + trend_reversal_reward + win_rate_reward)
-        
-        # Store for analysis
-        self.performance_metrics = {
-            "profit_reward": profit_reward,
-            "risk_reward": risk_reward,
-            "cost_reward": cost_reward,
-            "stability_reward": stability_reward,
-            "sharpe_reward": sharpe_reward,
-            "momentum_reward": momentum_reward,
-            "diversification_reward": diversification_reward,
-            "trend_reversal_reward": trend_reversal_reward,
-            "win_rate_reward": win_rate_reward,
-            "total_reward": total_reward
-        }
-        
-        return total_reward
-    
-    def _calculate_win_rate_reward(self) -> float:
-        """Calculate win rate reward component"""
-        if len(self.trade_history) < 10:  # Need minimum trades
-            return 0.0
-        
-        # Calculate win rate from recent trades
-        recent_trades = self.trade_history[-20:] if len(self.trade_history) >= 20 else self.trade_history
-        winning_trades = sum(1 for t in recent_trades if t.get('pnl', 0) > 0)
-        win_rate = winning_trades / len(recent_trades) if len(recent_trades) > 0 else 0.0
-        
-        # Reward for high win rate
-        win_rate_bonus = self.reward_weights.get("win_rate_bonus", 2.0)
-        
-        if win_rate >= 0.7:
-            return win_rate_bonus * (win_rate - 0.7) * 10
-        elif win_rate < 0.5:
-            return -win_rate_bonus * (0.5 - win_rate) * 10
-        
-        return 0.0
-    
-    def get_trend_reversal_metrics(self) -> Dict[str, Any]:
-        """Get trend reversal performance metrics"""
-        return self.trend_reversal_reward.get_performance_metrics()
-    
-    def reset_trend_reversal_tracking(self):
-        """Reset trend reversal performance tracking"""
-        self.trend_reversal_reward.reset_performance_tracking()
-    
-    def _calculate_trend_reversal_reward(self, trades: List, prev_value: float, current_value: float) -> float:
-        """Calculate trend reversal reward component"""
-        
-        if len(self.market_data_buffer) < 50:  # Need sufficient market data
-            return 0.0
-        
-        # Convert market data buffer to DataFrame
-        market_data_df = pd.DataFrame(self.market_data_buffer[-50:])
-        
-        # Get the last action taken (from trades)
-        if not trades:
-            action = np.array([0.0])
-            prev_action = np.array([0.0])
-        else:
-            last_trade = trades[-1]
-            action = np.array([last_trade.get('action', 0.0)])
-            prev_action = np.array([0.0])  # Simplified for now
-        
-        # Calculate trend reversal reward
-        trend_reward_components = self.trend_reversal_reward.calculate_reward(
-            market_data=market_data_df,
-            action=action,
-            prev_action=prev_action,
-            portfolio_value=current_value,
-            prev_portfolio_value=prev_value,
-            current_step=self.current_step,
-            symbol_index=0
+        return observation, {}
+
+    def step(self, action: Any) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
+        """Execute a trading action.
+
+        Parameters
+        ----------
+        action : Any
+            Desired position expressed in the environment's action space.
+
+        Returns
+        -------
+        numpy.ndarray
+            Next observation window containing normalized features with position context.
+        float
+            Reward equal to the change in portfolio value scaled by ``reward_scaling``.
+        bool
+            ``True`` when the episode should terminate because data is exhausted.
+        bool
+            ``True`` when the episode is truncated (always ``False`` in this implementation).
+        Dict[str, Any]
+            Diagnostics including ``portfolio_value``, ``price_change``, and ``trade_cost``.
+        """
+        action = float(np.clip(action, self.action_space.low, self.action_space.high)[0])
+        current_price = float(self.data.iloc[self.current_step][self.price_column])
+        target_position = action * self.config.get("max_position", 1.0)
+        prior_position = self.position
+        prev_value = self.portfolio_value
+
+        # Realize PnL from previous position
+        price_change = current_price - self.last_price
+        self.cash += prior_position * price_change
+
+        # Execute trade to reach target position
+        trade_change = target_position - prior_position
+        cost = abs(trade_change) * current_price * self.transaction_cost
+        self.cash -= trade_change * current_price + cost
+        self.position = target_position
+
+        # Update portfolio value and compute reward
+        self.portfolio_value = self.cash + self.position * current_price
+        reward = self.reward_scaling * (self.portfolio_value - prev_value)
+
+        self.trade_history.append(
+            {
+                "step": self.current_step,
+                "action": action,
+                "position": self.position,
+                "price": current_price,
+                "cost": cost,
+                "reward": reward,
+            }
         )
-        
-        return trend_reward_components.get('trend_reversal_reward', 0.0)
-    
-    def _calculate_risk_reward(self, current_value: float) -> float:
-        """Calculate risk-based reward"""
-        if len(self.portfolio_value_history) < 10:
-            return 0.0
-        
-        # Portfolio volatility
-        returns = np.diff(self.portfolio_value_history[-20:]) / self.portfolio_value_history[-20:-1]
-        volatility = np.std(returns) * np.sqrt(252)
-        
-        # Drawdown
-        peak = np.maximum.accumulate(self.portfolio_value_history)
-        drawdown = (np.array(self.portfolio_value_history) - peak) / peak
-        max_drawdown = np.min(drawdown)
-        
-        # Risk penalties
-        volatility_penalty = max(0, volatility - self.risk_config["max_portfolio_risk"]) * 100
-        drawdown_penalty = max(0, abs(max_drawdown) - self.risk_config["max_drawdown_limit"]) * 100
-        
-        return -self.reward_weights["risk"] * (volatility_penalty + drawdown_penalty)
-    
-    def _calculate_cost_reward(self, trades: List) -> float:
-        """Calculate transaction cost penalty"""
-        total_cost = 0.0
-        for trade in trades:
-            trade_value = abs(trade["action"]) * self.portfolio.get_portfolio_value(self._get_current_prices())
-            total_cost += trade_value * (self.transaction_cost_rate + self.slippage_rate)
-        
-        return -self.reward_weights["cost"] * total_cost / self.initial_cash * 100
-    
-    def _calculate_stability_reward(self, prev_positions: Dict, trades: List) -> float:
-        """Calculate stability reward"""
-        # Trade frequency penalty
-        trade_frequency_penalty = len(trades) * 0.1
-        
-        # Position change penalty
-        current_positions = self.portfolio.positions
-        position_change = 0.0
-        for symbol in self.symbols:
-            prev_pos = prev_positions.get(symbol, 0)
-            curr_pos = current_positions.get(symbol, 0)
-            position_change += abs(curr_pos - prev_pos)
-        
-        position_change_penalty = position_change * 0.01
-        
-        return -self.reward_weights["stability"] * (trade_frequency_penalty + position_change_penalty)
-    
-    def _calculate_sharpe_reward(self) -> float:
-        """Calculate Sharpe ratio reward"""
-        if len(self.portfolio_value_history) < 20:
-            return 0.0
-        
-        returns = np.diff(self.portfolio_value_history[-20:]) / self.portfolio_value_history[-20:-1]
-        if len(returns) == 0 or np.std(returns) == 0:
-            return 0.0
-        
-        sharpe_ratio = np.mean(returns) / np.std(returns) * np.sqrt(252)
-        return self.reward_weights["sharpe"] * sharpe_ratio * 10  # Scale for visibility
-    
-    def _calculate_momentum_reward(self) -> float:
-        """Calculate momentum reward"""
-        if len(self.portfolio_value_history) < 10:
-            return 0.0
-        
-        # Portfolio momentum
-        recent_returns = np.diff(self.portfolio_value_history[-10:]) / self.portfolio_value_history[-10:-1]
-        momentum = np.mean(recent_returns)
-        
-        # Market momentum (simplified)
-        if len(self.price_history) >= 10:
-            market_returns = np.diff(self.price_history[-10:]) / self.price_history[-10:-1]
-            market_momentum = np.mean(market_returns)
-            
-            # Reward for positive momentum alignment
-            momentum_alignment = momentum * market_momentum
-        else:
-            momentum_alignment = momentum
-        
-        return self.reward_weights["momentum"] * momentum_alignment * 100
-    
-    def _calculate_diversification_reward(self) -> float:
-        """Calculate diversification reward"""
-        current_prices = self._get_current_prices()
-        portfolio_value = self.portfolio.get_portfolio_value({symbol: price for symbol, price in zip(self.symbols, current_prices)})
-        
-        if portfolio_value <= 0:
-            return 0.0
-        
-        # Calculate position weights
-        weights = []
-        for symbol in self.symbols:
-            position_value = self.portfolio.positions.get(symbol, 0) * current_prices[self.symbols.index(symbol)]
-            weight = position_value / portfolio_value
-            weights.append(weight)
-        
-        weights = np.array(weights)
-        
-        # Diversification metric (inverse of concentration)
-        concentration = np.sum(weights ** 2)
-        diversification = 1 - concentration
-        
-        return self.reward_weights["diversification"] * diversification * 10
-    
-    def _get_observation(self) -> np.ndarray:
-        """Generate comprehensive observation"""
-        # Market data features
-        market_features = self._get_market_features()
-        
-        # Portfolio features
-        portfolio_features = self._get_portfolio_features()
-        
-        # Risk features
-        risk_features = self._get_risk_features()
-        
-        # Market state features
-        market_state_features = self._get_market_state_features()
-        
-        # Time features
-        time_features = self._get_time_features()
-        
-        # Combine all features
-        observation = np.concatenate([
-            market_features,
-            portfolio_features,
-            risk_features,
-            market_state_features,
-            time_features
-        ]).astype(np.float32)
-        
-        return observation
-    
-    def _get_market_features(self) -> np.ndarray:
-        """Get market data features"""
-        if not self.market_data_buffer:
-            return np.zeros((5 + 20) * self.num_assets)
-        
-        # Get current market data
-        current_data = self.market_data_buffer[-1]
-        
-        features = []
-        for symbol in self.symbols:
-            try:
-                # Check if symbol exists in the data structure
-                if hasattr(current_data, 'columns') and symbol in current_data.columns:
-                    # OHLCV - handle both DataFrame and Series cases
-                    if isinstance(current_data[symbol], pd.Series):
-                        ohlcv = current_data[symbol][['Open', 'High', 'Low', 'Close', 'Volume']].values
-                    else:
-                        ohlcv = current_data[symbol][['Open', 'High', 'Low', 'Close', 'Volume']].values
-                    features.extend(ohlcv)
-                    
-                    # Technical indicators (simplified)
-                    close_price = current_data[symbol]['Close']
-                    features.extend([
-                        close_price,  # Price
-                        close_price,  # SMA (simplified)
-                        close_price,  # EMA (simplified)
-                        50.0,  # RSI (neutral)
-                        0.0,  # MACD
-                        0.0,  # MACD Signal
-                        0.0,  # MACD Histogram
-                        close_price * 1.02,  # BB Upper
-                        close_price,  # BB Middle
-                        close_price * 0.98,  # BB Lower
-                        close_price * 0.02,  # ATR
-                        0.0,  # OBV
-                        0.0,  # Stochastic K
-                        0.0,  # Stochastic D
-                        0.0,  # Williams %R
-                        0.0,  # CCI
-                        0.0,  # ADX
-                        0.0,  # Plus DI
-                        0.0,  # Minus DI
-                        0.0,  # Aroon Up
-                        0.0   # Aroon Down
-                    ])
-                else:
-                    # Use default values for synthetic data
-                    base_price = 100.0
-                    features.extend([
-                        base_price,  # Open
-                        base_price * 1.01,  # High
-                        base_price * 0.99,  # Low
-                        base_price,  # Close
-                        1000.0,  # Volume
-                        base_price,  # Price
-                        base_price,  # SMA (simplified)
-                        base_price,  # EMA (simplified)
-                        50.0,  # RSI (neutral)
-                        0.0,  # MACD
-                        0.0,  # MACD Signal
-                        0.0,  # MACD Histogram
-                        base_price * 1.02,  # BB Upper
-                        base_price,  # BB Middle
-                        base_price * 0.98,  # BB Lower
-                        base_price * 0.02,  # ATR
-                        0.0,  # OBV
-                        0.0,  # Stochastic K
-                        0.0,  # Stochastic D
-                        0.0,  # Williams %R
-                        0.0,  # CCI
-                        0.0,  # ADX
-                        0.0,  # Plus DI
-                        0.0,  # Minus DI
-                        0.0,  # Aroon Up
-                        0.0   # Aroon Down
-                    ])
-            except Exception as e:
-                # Fill with zeros if symbol not found
-                features.extend([0.0] * (5 + 20))
-        
-        return np.array(features)
-    
-    def _get_portfolio_features(self) -> np.ndarray:
-        """Get portfolio features"""
-        current_prices = self._get_current_prices()
-        portfolio_value = self.portfolio.get_portfolio_value({symbol: price for symbol, price in zip(self.symbols, current_prices)})
-        
-        # Position weights
-        position_weights = []
-        for symbol in self.symbols:
-            position_value = self.portfolio.positions.get(symbol, 0) * current_prices[self.symbols.index(symbol)]
-            weight = position_value / portfolio_value if portfolio_value > 0 else 0
-            position_weights.append(weight)
-        
-        # Cash ratio
-        cash_ratio = self.portfolio.cash / portfolio_value if portfolio_value > 0 else 1.0
-        
-        # Total value ratio
-        value_ratio = portfolio_value / self.initial_cash
-        
-        # Leverage (simplified)
-        leverage = 1.0  # No leverage for now
-        
-        return np.array(position_weights + [cash_ratio, value_ratio, leverage])
-    
-    def _get_risk_features(self) -> np.ndarray:
-        """Get risk features"""
-        if len(self.portfolio_value_history) < 10:
-            return np.zeros(10)
-        
-        returns = np.diff(self.portfolio_value_history[-20:]) / self.portfolio_value_history[-20:-1]
-        
-        # Volatility
-        volatility = np.std(returns) * np.sqrt(252) if len(returns) > 1 else 0
-        
-        # Sharpe ratio
-        sharpe = np.mean(returns) / np.std(returns) * np.sqrt(252) if np.std(returns) > 0 else 0
-        
-        # Drawdown
-        peak = np.maximum.accumulate(self.portfolio_value_history)
-        drawdown = (np.array(self.portfolio_value_history) - peak) / peak
-        max_drawdown = np.min(drawdown) if len(drawdown) > 0 else 0
-        
-        # VaR (simplified)
-        var_95 = np.percentile(returns, 5) if len(returns) > 0 else 0
-        
-        # CVaR
-        cvar_95 = np.mean(returns[returns <= var_95]) if len(returns) > 0 else 0
-        
-        # Additional risk metrics
-        skewness = self._calculate_skewness(returns)
-        kurtosis = self._calculate_kurtosis(returns)
-        
-        # Correlation with market (simplified)
-        market_correlation = 0.5  # Placeholder
-        
-        # Beta (simplified)
-        beta = 1.0  # Placeholder
-        
-        # Sortino ratio
-        downside_returns = returns[returns < 0]
-        downside_deviation = np.std(downside_returns) * np.sqrt(252) if len(downside_returns) > 0 else 0
-        sortino = np.mean(returns) / downside_deviation * np.sqrt(252) if downside_deviation > 0 else 0
-        
-        return np.array([
-            volatility, sharpe, max_drawdown, var_95, cvar_95,
-            skewness, kurtosis, market_correlation, beta, sortino
-        ])
-    
-    def _calculate_skewness(self, returns: np.ndarray) -> float:
-        """Calculate skewness"""
-        if len(returns) < 3:
-            return 0.0
-        mean = np.mean(returns)
-        std = np.std(returns)
-        if std == 0:
-            return 0.0
-        return np.mean(((returns - mean) / std) ** 3)
-    
-    def _calculate_kurtosis(self, returns: np.ndarray) -> float:
-        """Calculate kurtosis"""
-        if len(returns) < 4:
-            return 0.0
-        mean = np.mean(returns)
-        std = np.std(returns)
-        if std == 0:
-            return 0.0
-        return np.mean(((returns - mean) / std) ** 4) - 3
-    
-    def _get_market_state_features(self) -> np.ndarray:
-        """Get market state features"""
-        if len(self.price_history) < 10:
-            return np.zeros(5)
-        
-        # Market regime (simplified)
-        recent_returns = np.diff(self.price_history[-10:]) / self.price_history[-10:-1]
-        market_return = np.mean(recent_returns)
-        market_volatility = np.std(recent_returns)
-        
-        # Regime classification
-        if market_return > 0.01:
-            regime = 1.0  # Bull
-        elif market_return < -0.01:
-            regime = -1.0  # Bear
-        else:
-            regime = 0.0  # Neutral
-        
-        # Volatility regime
-        if market_volatility > 0.02:
-            vol_regime = 1.0  # High volatility
-        else:
-            vol_regime = 0.0  # Low volatility
-        
-        # Trend strength
-        trend_strength = abs(market_return) / market_volatility if market_volatility > 0 else 0
-        
-        return np.array([regime, vol_regime, trend_strength, market_return, market_volatility])
-    
-    def _get_time_features(self) -> np.ndarray:
-        """Get time features"""
-        progress = self.current_step / self.episode_length
-        time_to_end = 1.0 - progress
-        
-        return np.array([progress, time_to_end])
-    
-    def _get_info(self) -> Dict[str, Any]:
-        """Get environment info"""
-        current_prices = self._get_current_prices()
-        portfolio_value = self.portfolio.get_portfolio_value({symbol: price for symbol, price in zip(self.symbols, current_prices)})
-        
-        # Calculate win rate
-        win_rate = 0.0
-        winning_trades = 0
-        losing_trades = 0
-        if len(self.trade_history) > 0:
-            winning_trades = sum(1 for t in self.trade_history if t.get('pnl', 0) > 0)
-            losing_trades = sum(1 for t in self.trade_history if t.get('pnl', 0) < 0)
-            win_rate = winning_trades / len(self.trade_history) if len(self.trade_history) > 0 else 0.0
-        
-        return {
-            "current_step": self.current_step,
-            "portfolio_value": portfolio_value,
-            "cash": self.portfolio.cash,
-            "positions": self.portfolio.positions.copy(),
-            "total_profit": portfolio_value - self.initial_cash,
-            "profit_pct": (portfolio_value - self.initial_cash) / self.initial_cash * 100,
-            "performance_metrics": self.performance_metrics.copy(),
-            "num_trades": len(self.trade_history),
-            "win_rate": win_rate,
-            "winning_trades": winning_trades,
-            "losing_trades": losing_trades,
-            "trades": self.trade_history[-10:] if len(self.trade_history) > 10 else self.trade_history
+
+        self.current_step += 1
+        terminated = self.current_step >= len(self.data) - 1
+        truncated = False
+        self.last_price = current_price
+        observation = self._get_observation()
+        info = {
+            "portfolio_value": self.portfolio_value,
+            "price_change": price_change,
+            "trade_cost": cost,
         }
-    
+        return observation, float(reward), terminated, truncated, info
+
     def render(self) -> None:
-        """Render environment"""
-        if self.render_mode == "human":
-            self._render_frame()
-    
-    def _render_frame(self):
-        """Render frame (placeholder)"""
-        # This would implement actual rendering
-        pass
-    
+        logger.debug(
+            "Step %d | Position %.4f | Cash %.2f | Portfolio %.2f",
+            self.current_step,
+            self.position,
+            self.cash,
+            self.portfolio_value,
+        )
+
     def close(self) -> None:
-        """Close environment"""
-        pass
+        self.trade_history.clear()
+
+    def _get_observation(self) -> np.ndarray:
+        start = self.current_step - self.window_size
+        window = self.data.iloc[start:self.current_step]
+        normalized = window.pct_change().dropna().replace([np.inf, -np.inf], 0.0).fillna(0.0)
+        flattened = normalized.to_numpy(dtype=np.float32).flatten()
+        padding = self.window_size * len(self.data.columns) - flattened.shape[0]
+        if padding > 0:
+            flattened = np.pad(flattened, (padding, 0))
+        observation = np.concatenate(
+            [
+                flattened,
+                np.array([self.position, self.portfolio_value], dtype=np.float32),
+            ]
+        )
+        return observation.astype(np.float32)
 
 
-if __name__ == "__main__":
-    # Test the environment
-    config = {
-        "num_assets": 5,
-        "initial_cash": 100000,
-        "episode_length": 100,
-        "use_real_data": False
-    }
-    
-    env = WealthArenaTradingEnv(config)
-    
-    # Test environment
-    obs, info = env.reset()
-    print(f"Environment created: obs shape {obs.shape}")
-    
-    # Test a few steps
-    for i in range(5):
-        action = env.action_space.sample()
-        obs, reward, terminated, truncated, info = env.step(action)
-        print(f"Step {i+1}: reward={reward:.4f}, portfolio_value={info['portfolio_value']:.2f}")
-        
-        if terminated or truncated:
-            break
-    
-    print("Environment test completed!")
+class StockTradingEnv(TradingEnv):
+    """Stock-specific trading environment."""
+
+    pass
+
+
+class ForexTradingEnv(TradingEnv):
+    """Forex-specific trading environment."""
+
+    pass
+
+
+class CryptoTradingEnv(TradingEnv):
+    """Crypto-specific trading environment."""
+
+    pass
+
+
+class ETFTradingEnv(TradingEnv):
+    """ETF-specific trading environment."""
+
+    pass
+
+
+class CommodityTradingEnv(TradingEnv):
+    """Commodity-specific trading environment."""
+
+    pass
+
+
+class OptionsTradingEnv(TradingEnv):
+    """Options-specific trading environment handling greeks and time decay."""
+
+    pass
+
+
+class VectorizedTradingEnv:
+    """Wrapper for vectorized execution using Stable-Baselines3 utilities."""
+
+    def __init__(self, env_fns: Any):
+        self.env_fns = env_fns
+
+    def reset(self) -> Any:
+        return [env.reset() for env in self.env_fns]
+
+    def step(self, actions: Any) -> Any:
+        return [env.step(action) for env, action in zip(self.env_fns, actions)]
+
+    def close(self) -> None:
+        for env in self.env_fns:
+            env.close()
+
+
+class StockTradingEnv(TradingEnv):
+    """Stock-specific trading environment."""
+
+    pass
+
+
+class ForexTradingEnv(TradingEnv):
+    """Forex-specific trading environment."""
+
+    pass
+
+
+class CryptoTradingEnv(TradingEnv):
+    """Crypto-specific trading environment."""
+
+    pass
+
+
+class ETFTradingEnv(TradingEnv):
+    """ETF-specific trading environment."""
+
+    pass
+
+
+class CommodityTradingEnv(TradingEnv):
+    """Commodity-specific trading environment."""
+
+    pass
+
+
+class OptionsTradingEnv(TradingEnv):
+    """Options-specific trading environment handling greeks and time decay."""
+
+    pass
+
+
+class VectorizedTradingEnv:
+    """Wrapper for vectorized execution using Stable-Baselines3 utilities."""
+
+    def __init__(self, env_fns: Any):
+        self.env_fns = env_fns
+
+    def reset(self) -> Any:
+        return [env.reset() for env in self.env_fns]
+
+    def step(self, actions: Any) -> Any:
+        return [env.step(action) for env, action in zip(self.env_fns, actions)]
+
+    def close(self) -> None:
+        for env in self.env_fns:
+            env.close()

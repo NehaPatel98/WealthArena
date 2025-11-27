@@ -1,6 +1,6 @@
 /**
- * Duolingo-Style Lesson Detail Screen
- * Interactive lesson with multiple question types, progress tracking, and rewards
+ * Duolingo-Style Lesson Detail Screen with Slideshow Format
+ * Interactive lesson with slides first, then quiz, progress tracking, and rewards
  */
 
 import React, { useState, useEffect } from 'react';
@@ -54,6 +54,8 @@ export default function LessonDetailScreen() {
   const topicTitle = params.topicTitle as string || 'Learning';
   
   const [lesson, setLesson] = useState<Lesson | null>(null);
+  const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
+  const [showQuiz, setShowQuiz] = useState(false);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [showExplanation, setShowExplanation] = useState(false);
@@ -63,14 +65,56 @@ export default function LessonDetailScreen() {
   const [completed, setCompleted] = useState(false);
   const [earnedXP, setEarnedXP] = useState(0);
   const [earnedCoins, setEarnedCoins] = useState(0);
-  
-  const progress = lesson ? ((currentQuestionIndex + (showExplanation ? 1 : 0)) / lesson.questions.length) * 100 : 0;
+  const [slides, setSlides] = useState<string[]>([]);
+
+  const totalSteps = slides.length + (lesson?.questions.length || 0);
+  const currentStep = showQuiz 
+    ? slides.length + currentQuestionIndex + (showExplanation ? 0.5 : 0)
+    : currentSlideIndex + 1;
+  const progress = totalSteps > 0 ? (currentStep / totalSteps) * 100 : 0;
   const scaleAnim = new Animated.Value(1);
 
   // Load lesson
   useEffect(() => {
     loadLesson();
   }, [topicId]);
+
+  // Generate slides from lesson content
+  const generateSlides = (content: string, title: string): string[] => {
+    if (!content || content.trim().length === 0) {
+      // Generate default slides for the topic
+      return [
+        `# Welcome to ${title}\n\nIn this lesson, you'll learn the fundamentals of ${title.toLowerCase()}. Let's start with the basics!`,
+        `## Key Concepts\n\n• Understanding the core principles\n• Learning practical applications\n• Building your knowledge step by step\n\nReady to dive in?`,
+        `## Why This Matters\n\n${title} is essential for successful trading because:\n\n• It helps you make informed decisions\n• Reduces risk in your investments\n• Builds confidence in your trading strategy`,
+        `## Let's Practice!\n\nNow that you've learned the basics, it's time to test your knowledge with some questions.\n\n🎯 **Ready for the quiz?**`
+      ];
+    }
+
+    // Split content into logical sections for slides
+    const sections = content.split(/\n\n+/).filter(section => section.trim().length > 0);
+    const slidesArray: string[] = [];
+
+    // Welcome slide
+    slidesArray.push(`# ${title}\n\nWelcome to this lesson! Let's explore ${title.toLowerCase()} together.`);
+
+    // Content slides (max 4 slides to keep it concise)
+    const maxContentSlides = 3;
+    const sectionsPerSlide = Math.ceil(sections.length / maxContentSlides);
+    
+    for (let i = 0; i < maxContentSlides && i * sectionsPerSlide < sections.length; i++) {
+      const slideContent = sections
+        .slice(i * sectionsPerSlide, (i + 1) * sectionsPerSlide)
+        .join('\n\n');
+      
+      slidesArray.push(`## Slide ${i + 2}\n\n${slideContent}`);
+    }
+
+    // Quiz transition slide
+    slidesArray.push(`## Ready to Test Your Knowledge?\n\nGreat job learning about ${title}!\n\nNow let's see how much you've absorbed with a quick quiz.\n\n🎯 **Let's start the quiz!**`);
+
+    return slidesArray;
+  };
 
   const loadLesson = async () => {
     try {
@@ -98,6 +142,7 @@ export default function LessonDetailScreen() {
                 difficulty: topicData.topic?.Difficulty || 'beginner',
               };
               setLesson(convertedLesson);
+              setSlides(generateSlides(convertedLesson.content, convertedLesson.title));
               return;
             }
           }
@@ -142,6 +187,7 @@ export default function LessonDetailScreen() {
             convertedLesson.questions = generateDefaultQuestions(topicTitle);
           }
           setLesson(convertedLesson);
+          setSlides(generateSlides(convertedLesson.content, convertedLesson.title));
         } else if (lessons && !Array.isArray(lessons) && lessons.id) {
           // Handle single lesson object
           const singleLesson = lessons as Lesson;
@@ -149,6 +195,7 @@ export default function LessonDetailScreen() {
             singleLesson.questions = generateDefaultQuestions(topicTitle);
           }
           setLesson(singleLesson);
+          setSlides(generateSlides(singleLesson.content, singleLesson.title));
         } else {
           // Create a default lesson with sample questions
           const defaultLesson: Lesson = {
@@ -164,6 +211,7 @@ export default function LessonDetailScreen() {
             difficulty: 'beginner',
           };
           setLesson(defaultLesson);
+          setSlides(generateSlides(defaultLesson.content, defaultLesson.title));
         }
       } else {
         // Create a default lesson if API fails
@@ -180,14 +228,25 @@ export default function LessonDetailScreen() {
           difficulty: 'beginner',
         };
         setLesson(defaultLesson);
+        setSlides(generateSlides(defaultLesson.content, defaultLesson.title));
       }
     } catch (error) {
       console.error('Failed to load lesson:', error);
-      Alert.alert(
-        'Connection Error',
-        'Unable to connect to the lesson service. Please check your connection and try again.',
-        [{ text: 'OK', onPress: () => router.back() }]
-      );
+      // Create a default lesson if API fails
+      const defaultLesson: Lesson = {
+        id: 'default-1',
+        topicId: topicId,
+        title: topicTitle || 'Learning Lesson',
+        description: 'Learn the fundamentals of trading',
+        content: `Welcome to ${topicTitle || 'this lesson'}! This lesson will teach you the basics.`,
+        questions: generateDefaultQuestions(topicTitle),
+        xpReward: 50,
+        coinReward: 25,
+        estimatedDuration: 5,
+        difficulty: 'beginner',
+      };
+      setLesson(defaultLesson);
+      setSlides(generateSlides(defaultLesson.content, defaultLesson.title));
     } finally {
       setIsLoading(false);
     }
@@ -236,35 +295,24 @@ export default function LessonDetailScreen() {
         explanation: 'True! Diversification spreads risk across different assets, reducing the impact of any single investment performing poorly.',
         difficulty: 'beginner',
       },
-      {
-        id: 'q4',
-        type: 'multiple_choice',
-        question: 'What does "buy low, sell high" mean?',
-        options: [
-          { text: 'Always buy at the lowest price possible', isCorrect: false },
-          { text: 'Purchase assets when prices are relatively low and sell when they are higher', isCorrect: true },
-          { text: 'Only trade during market lows', isCorrect: false },
-          { text: 'Avoid selling at any price', isCorrect: false },
-        ],
-        explanation: '"Buy low, sell high" means purchasing assets when their prices are relatively low and selling them when prices have increased, capturing the difference as profit.',
-        difficulty: 'beginner',
-      },
-      {
-        id: 'q5',
-        type: 'multiple_choice',
-        question: 'What is a stop-loss order?',
-        options: [
-          { text: 'An order to stop trading completely', isCorrect: false },
-          { text: 'An order that automatically sells an asset if its price drops to a certain level', isCorrect: true },
-          { text: 'An order to buy more when prices drop', isCorrect: false },
-          { text: 'An order that guarantees profits', isCorrect: false },
-        ],
-        explanation: 'A stop-loss order automatically sells an asset when its price drops to a predetermined level, helping limit potential losses.',
-        difficulty: 'beginner',
-      },
     ];
     
     return defaultQuestions;
+  };
+
+  const handleNextSlide = () => {
+    if (currentSlideIndex < slides.length - 1) {
+      setCurrentSlideIndex(prev => prev + 1);
+    } else {
+      // Finished slides, start quiz
+      setShowQuiz(true);
+    }
+  };
+
+  const handlePreviousSlide = () => {
+    if (currentSlideIndex > 0) {
+      setCurrentSlideIndex(prev => prev - 1);
+    }
   };
 
   const handleAnswerSelect = (answer: string) => {
@@ -449,6 +497,8 @@ export default function LessonDetailScreen() {
                 size="medium"
                 onPress={() => {
                   setHearts(MAX_HEARTS);
+                  setCurrentSlideIndex(0);
+                  setShowQuiz(false);
                   setCurrentQuestionIndex(0);
                   setSelectedAnswer(null);
                   setShowExplanation(false);
@@ -516,218 +566,290 @@ export default function LessonDetailScreen() {
           />
         </View>
         <Text variant="xs" muted>
-          {currentQuestionIndex + 1} / {lesson.questions.length}
+          {showQuiz 
+            ? `Quiz: ${currentQuestionIndex + 1} / ${lesson.questions.length}`
+            : `Slide: ${currentSlideIndex + 1} / ${slides.length}`
+          }
         </Text>
       </View>
 
-      {/* Question Content */}
+      {/* Main Content */}
       <ScrollView 
         style={styles.content}
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
       >
-        {/* Lesson Content (shown before first question) - Always show content first */}
-        {currentQuestionIndex === 0 && !showExplanation && (
-          <Card style={styles.contentCard} elevation="low">
-            <View style={styles.contentHeader}>
-              <Icon name="lab" size={24} color={theme.primary} />
-              <Text variant="h4" weight="semibold" style={{ marginLeft: tokens.spacing.sm, color: theme.text }}>
-                📚 Learn First
+        {/* Slideshow Mode */}
+        {!showQuiz && slides.length > 0 && (
+          <Card style={styles.slideCard} elevation="med">
+            <View style={styles.slideHeader}>
+              <Icon name="presentation" size={24} color={theme.primary} />
+              <Text variant="h3" weight="semibold" style={{ marginLeft: tokens.spacing.sm, color: theme.text }}>
+                📖 Learning Content
+              </Text>
+              <View style={styles.slideCounter}>
+                <Text variant="xs" muted>
+                  {currentSlideIndex + 1} of {slides.length}
+                </Text>
+              </View>
+            </View>
+            
+            <View style={styles.slideContent}>
+              <Text variant="body" style={{ lineHeight: 24, color: theme.text }}>
+                {slides[currentSlideIndex]?.split('\n').map((line, index) => {
+                  if (line.startsWith('# ')) {
+                    return (
+                      <Text key={index} variant="h2" weight="bold" style={{ marginBottom: tokens.spacing.md, color: theme.primary }}>
+                        {line.substring(2)}{'\n'}
+                      </Text>
+                    );
+                  } else if (line.startsWith('## ')) {
+                    return (
+                      <Text key={index} variant="h3" weight="semibold" style={{ marginBottom: tokens.spacing.sm, marginTop: tokens.spacing.md, color: theme.text }}>
+                        {line.substring(3)}{'\n'}
+                      </Text>
+                    );
+                  } else if (line.startsWith('• ')) {
+                    return (
+                      <Text key={index} variant="body" style={{ marginLeft: tokens.spacing.md, marginBottom: tokens.spacing.xs, color: theme.text }}>
+                        {line}{'\n'}
+                      </Text>
+                    );
+                  } else if (line.trim().length > 0) {
+                    return (
+                      <Text key={index} variant="body" style={{ marginBottom: tokens.spacing.sm, color: theme.text }}>
+                        {line}{'\n'}
+                      </Text>
+                    );
+                  }
+                  return <Text key={index}>{'\n'}</Text>;
+                })}
               </Text>
             </View>
-            {lesson.content ? (
-              <>
-                <Text variant="body" style={{ marginTop: tokens.spacing.md, lineHeight: 22, color: theme.text }}>
-                  {lesson.content}
-                </Text>
-                {lesson.description && (
-                  <Text variant="small" muted style={{ marginTop: tokens.spacing.sm }}>
-                    {lesson.description}
-                  </Text>
-                )}
-              </>
-            ) : (
-              <Text variant="body" style={{ marginTop: tokens.spacing.md, lineHeight: 22, color: theme.text }}>
-                Welcome to {lesson.title}! This lesson will teach you the fundamentals. Read through the content below, then answer the questions to test your understanding.
-              </Text>
-            )}
-            <View style={[styles.continueHint, { backgroundColor: theme.primary + '10', borderColor: theme.primary + '30' }]}>
-              <Ionicons name="arrow-down" size={20} color={theme.primary} />
-              <Text variant="small" style={{ color: theme.primary, marginLeft: tokens.spacing.xs }}>
-                Scroll down to see questions after reading
-              </Text>
+
+            <View style={styles.slideNavigation}>
+              <Button
+                variant="ghost"
+                size="medium"
+                onPress={handlePreviousSlide}
+                disabled={currentSlideIndex === 0}
+                style={[styles.slideNavButton, currentSlideIndex === 0 && { opacity: 0.5 }]}
+              >
+                ← Previous
+              </Button>
+              
+              <View style={styles.slideIndicators}>
+                {slides.map((_, index) => (
+                  <View
+                    key={index}
+                    style={[
+                      styles.slideIndicator,
+                      {
+                        backgroundColor: index === currentSlideIndex ? theme.primary : theme.border,
+                      }
+                    ]}
+                  />
+                ))}
+              </View>
+
+              <Button
+                variant="primary"
+                size="medium"
+                onPress={handleNextSlide}
+                style={styles.slideNavButton}
+              >
+                {currentSlideIndex === slides.length - 1 ? 'Start Quiz →' : 'Next →'}
+              </Button>
             </View>
           </Card>
         )}
         
-        {/* Progress Indicator */}
-        <View style={styles.progressIndicator}>
-          <Text variant="xs" muted>
-            Question {currentQuestionIndex + 1} of {lesson.questions.length}
-          </Text>
-          <View style={[styles.progressBar, { backgroundColor: theme.border }]}>
-            <View 
-              style={[
-                styles.progressFill, 
-                { 
-                  backgroundColor: theme.primary, 
-                  width: `${((currentQuestionIndex + 1) / lesson.questions.length) * 100}%` 
-                }
-              ]} 
-            />
-          </View>
-        </View>
-
-        {/* Question */}
-        {currentQuestion && (
-          <Card style={styles.questionCard}>
-            <Text variant="h3" weight="semibold" style={styles.questionText}>
-              {currentQuestion.question}
-            </Text>
-
-            {/* Multiple Choice / True False */}
-            {(currentQuestion.type === 'multiple_choice' || currentQuestion.type === 'true_false') && (
-              <View style={styles.optionsContainer}>
-                {currentQuestion.options?.map((option, index) => {
-                  const isSelected = selectedAnswer === option.text;
-                  const isCorrect = option.isCorrect;
-                  const showResult = showExplanation;
-                  
-                  let bgColor = theme.surface;
-                  let borderColor = theme.border;
-                  let textColor = theme.text;
-                  
-                  if (showResult) {
-                    if (isCorrect) {
-                      bgColor = theme.success + '20';
-                      borderColor = theme.success;
-                    } else if (isSelected && !isCorrect) {
-                      bgColor = theme.danger + '20';
-                      borderColor = theme.danger;
-                    }
-                  } else if (isSelected) {
-                    bgColor = theme.primary + '20';
-                    borderColor = theme.primary;
-                  }
-                  
-                  return (
-                    <Pressable
-                      key={index}
-                      onPress={() => handleAnswerSelect(option.text)}
-                      disabled={showExplanation}
-                      style={[
-                        styles.optionButton,
-                        {
-                          backgroundColor: bgColor,
-                          borderColor: borderColor,
-                        }
-                      ]}
-                    >
-                      <Text 
-                        variant="body" 
-                        style={{ color: textColor }}
-                        weight={isSelected ? "semibold" : "regular"}
-                      >
-                        {option.text}
-                      </Text>
-                      {showResult && isCorrect && (
-                        <Ionicons name="checkmark-circle" size={24} color={theme.success} />
-                      )}
-                      {showResult && isSelected && !isCorrect && (
-                        <Ionicons name="close-circle" size={24} color={theme.danger} />
-                      )}
-                    </Pressable>
-                  );
-                })}
-              </View>
-            )}
-
-            {/* Fill in the Blank */}
-            {currentQuestion.type === 'fill_blank' && (
-              <View style={styles.fillBlankContainer}>
-                <Text variant="body" style={styles.fillBlankText}>
-                  {currentQuestion.question.split('___').map((part, i, arr) => (
-                    <React.Fragment key={i}>
-                      {part}
-                      {i < arr.length - 1 && (
-                        <Text style={[styles.blankInput, { borderColor: theme.primary }]}>
-                          {selectedAnswer || '______'}
-                        </Text>
-                      )}
-                    </React.Fragment>
-                  ))}
+        {/* Quiz Mode */}
+        {showQuiz && (
+          <>
+            {/* Quiz Header */}
+            <Card style={styles.quizHeaderCard} elevation="low">
+              <View style={styles.quizHeader}>
+                <Icon name="quiz" size={24} color={theme.accent} />
+                <Text variant="h3" weight="semibold" style={{ marginLeft: tokens.spacing.sm, color: theme.text }}>
+                  🎯 Quiz Time!
                 </Text>
-                {!showExplanation && (
-                  <View style={styles.fillBlankOptions}>
-                    {currentQuestion.options?.map((option, index) => (
-                      <Pressable
-                        key={index}
-                        onPress={() => handleAnswerSelect(option.text)}
-                        style={[
-                          styles.fillBlankOption,
-                          {
-                            backgroundColor: selectedAnswer === option.text ? theme.primary + '20' : theme.surface,
-                            borderColor: selectedAnswer === option.text ? theme.primary : theme.border,
-                          }
-                        ]}
-                      >
-                        <Text variant="body">{option.text}</Text>
-                      </Pressable>
-                    ))}
+              </View>
+              <Text variant="small" muted>
+                Test your knowledge with these questions
+              </Text>
+            </Card>
+
+            {/* Progress Indicator */}
+            <View style={styles.progressIndicator}>
+              <Text variant="xs" muted>
+                Question {currentQuestionIndex + 1} of {lesson.questions.length}
+              </Text>
+              <View style={[styles.progressBar, { backgroundColor: theme.border }]}>
+                <View 
+                  style={[
+                    styles.progressFill, 
+                    { 
+                      backgroundColor: theme.accent, 
+                      width: `${((currentQuestionIndex + 1) / lesson.questions.length) * 100}%` 
+                    }
+                  ]} 
+                />
+              </View>
+            </View>
+
+            {/* Question */}
+            {currentQuestion && (
+              <Card style={styles.questionCard}>
+                <Text variant="h3" weight="semibold" style={styles.questionText}>
+                  {currentQuestion.question}
+                </Text>
+
+                {/* Multiple Choice / True False */}
+                {(currentQuestion.type === 'multiple_choice' || currentQuestion.type === 'true_false') && (
+                  <View style={styles.optionsContainer}>
+                    {currentQuestion.options?.map((option, index) => {
+                      const isSelected = selectedAnswer === option.text;
+                      const isCorrect = option.isCorrect;
+                      const showResult = showExplanation;
+                      
+                      let bgColor = theme.surface;
+                      let borderColor = theme.border;
+                      let textColor = theme.text;
+                      
+                      if (showResult) {
+                        if (isCorrect) {
+                          bgColor = theme.success + '20';
+                          borderColor = theme.success;
+                        } else if (isSelected && !isCorrect) {
+                          bgColor = theme.danger + '20';
+                          borderColor = theme.danger;
+                        }
+                      } else if (isSelected) {
+                        bgColor = theme.primary + '20';
+                        borderColor = theme.primary;
+                      }
+                      
+                      return (
+                        <Pressable
+                          key={index}
+                          onPress={() => handleAnswerSelect(option.text)}
+                          disabled={showExplanation}
+                          style={[
+                            styles.optionButton,
+                            {
+                              backgroundColor: bgColor,
+                              borderColor: borderColor,
+                            }
+                          ]}
+                        >
+                          <Text 
+                            variant="body" 
+                            style={{ color: textColor }}
+                            weight={isSelected ? "semibold" : "regular"}
+                          >
+                            {option.text}
+                          </Text>
+                          {showResult && isCorrect && (
+                            <Ionicons name="checkmark-circle" size={24} color={theme.success} />
+                          )}
+                          {showResult && isSelected && !isCorrect && (
+                            <Ionicons name="close-circle" size={24} color={theme.danger} />
+                          )}
+                        </Pressable>
+                      );
+                    })}
                   </View>
                 )}
-              </View>
+
+                {/* Fill in the Blank */}
+                {currentQuestion.type === 'fill_blank' && (
+                  <View style={styles.fillBlankContainer}>
+                    <Text variant="body" style={styles.fillBlankText}>
+                      {currentQuestion.question.split('___').map((part, i, arr) => (
+                        <React.Fragment key={i}>
+                          {part}
+                          {i < arr.length - 1 && (
+                            <Text style={[styles.blankInput, { borderColor: theme.primary }]}>
+                              {selectedAnswer || '______'}
+                            </Text>
+                          )}
+                        </React.Fragment>
+                      ))}
+                    </Text>
+                    {!showExplanation && (
+                      <View style={styles.fillBlankOptions}>
+                        {currentQuestion.options?.map((option, index) => (
+                          <Pressable
+                            key={index}
+                            onPress={() => handleAnswerSelect(option.text)}
+                            style={[
+                              styles.fillBlankOption,
+                              {
+                                backgroundColor: selectedAnswer === option.text ? theme.primary + '20' : theme.surface,
+                                borderColor: selectedAnswer === option.text ? theme.primary : theme.border,
+                              }
+                            ]}
+                          >
+                            <Text variant="body">{option.text}</Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    )}
+                  </View>
+                )}
+
+                {/* Explanation */}
+                {showExplanation && (
+                  <Animated.View style={[styles.explanationCard, { transform: [{ scale: scaleAnim }] }]}>
+                    <View style={[styles.explanationHeader, { backgroundColor: checkAnswer(currentQuestion, selectedAnswer || '') ? theme.success + '20' : theme.danger + '20' }]}>
+                      <Ionicons 
+                        name={checkAnswer(currentQuestion, selectedAnswer || '') ? "checkmark-circle" : "close-circle"} 
+                        size={24} 
+                        color={checkAnswer(currentQuestion, selectedAnswer || '') ? theme.success : theme.danger} 
+                      />
+                      <Text 
+                        variant="body" 
+                        weight="semibold"
+                        color={checkAnswer(currentQuestion, selectedAnswer || '') ? theme.success : theme.danger}
+                      >
+                        {checkAnswer(currentQuestion, selectedAnswer || '') ? 'Correct!' : 'Incorrect'}
+                      </Text>
+                    </View>
+                    <Text variant="small" style={styles.explanationText}>
+                      {currentQuestion.explanation}
+                    </Text>
+                  </Animated.View>
+                )}
+              </Card>
             )}
 
-            {/* Explanation */}
-            {showExplanation && (
-              <Animated.View style={[styles.explanationCard, { transform: [{ scale: scaleAnim }] }]}>
-                <View style={[styles.explanationHeader, { backgroundColor: checkAnswer(currentQuestion, selectedAnswer || '') ? theme.success + '20' : theme.danger + '20' }]}>
-                  <Ionicons 
-                    name={checkAnswer(currentQuestion, selectedAnswer || '') ? "checkmark-circle" : "close-circle"} 
-                    size={24} 
-                    color={checkAnswer(currentQuestion, selectedAnswer || '') ? theme.success : theme.danger} 
-                  />
-                  <Text 
-                    variant="body" 
-                    weight="semibold"
-                    color={checkAnswer(currentQuestion, selectedAnswer || '') ? theme.success : theme.danger}
-                  >
-                    {checkAnswer(currentQuestion, selectedAnswer || '') ? 'Correct!' : 'Incorrect'}
-                  </Text>
-                </View>
-                <Text variant="small" style={styles.explanationText}>
-                  {currentQuestion.explanation}
-                </Text>
-              </Animated.View>
-            )}
-          </Card>
+            {/* Quiz Action Button */}
+            <View style={styles.actionContainer}>
+              {!showExplanation ? (
+                <Button
+                  variant="primary"
+                  size="large"
+                  onPress={handleSubmitAnswer}
+                  disabled={!selectedAnswer}
+                  fullWidth
+                >
+                  Check Answer
+                </Button>
+              ) : (
+                <Button
+                  variant="primary"
+                  size="large"
+                  onPress={handleNextQuestion}
+                  fullWidth
+                  icon={<Ionicons name="arrow-forward" size={20} color="#FFFFFF" />}
+                >
+                  {currentQuestionIndex < lesson.questions.length - 1 ? 'Continue' : 'Complete Lesson'}
+                </Button>
+              )}
+            </View>
+          </>
         )}
-
-        {/* Action Button */}
-        <View style={styles.actionContainer}>
-          {!showExplanation ? (
-            <Button
-              variant="primary"
-              size="large"
-              onPress={handleSubmitAnswer}
-              disabled={!selectedAnswer}
-              fullWidth
-            >
-              Check Answer
-            </Button>
-          ) : (
-            <Button
-              variant="primary"
-              size="large"
-              onPress={handleNextQuestion}
-              fullWidth
-              icon={<Ionicons name="arrow-forward" size={20} color="#FFFFFF" />}
-            >
-              {currentQuestionIndex < lesson.questions.length - 1 ? 'Continue' : 'Complete Lesson'}
-            </Button>
-          )}
-        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -794,23 +916,6 @@ const styles = StyleSheet.create({
   contentContainer: {
     padding: tokens.spacing.md,
     gap: tokens.spacing.md,
-  },
-  contentCard: {
-    gap: tokens.spacing.md,
-    padding: tokens.spacing.md,
-  },
-  contentHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: tokens.spacing.sm,
-  },
-  continueHint: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: tokens.spacing.md,
-    padding: tokens.spacing.sm,
-    borderRadius: tokens.radius.md,
-    borderWidth: 1,
   },
   progressIndicator: {
     marginBottom: tokens.spacing.md,
@@ -903,5 +1008,58 @@ const styles = StyleSheet.create({
   completionActions: {
     width: '100%',
     gap: tokens.spacing.sm,
+  },
+  // Slideshow styles
+  slideCard: {
+    padding: tokens.spacing.lg,
+    minHeight: 400,
+    gap: tokens.spacing.md,
+  },
+  slideHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: tokens.spacing.md,
+  },
+  slideCounter: {
+    paddingHorizontal: tokens.spacing.sm,
+    paddingVertical: tokens.spacing.xs,
+    borderRadius: tokens.radius.sm,
+    backgroundColor: 'rgba(0,0,0,0.1)',
+  },
+  slideContent: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingVertical: tokens.spacing.lg,
+  },
+  slideNavigation: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: tokens.spacing.lg,
+    paddingTop: tokens.spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.1)',
+  },
+  slideNavButton: {
+    minWidth: 100,
+  },
+  slideIndicators: {
+    flexDirection: 'row',
+    gap: tokens.spacing.xs,
+  },
+  slideIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  // Quiz styles
+  quizHeaderCard: {
+    padding: tokens.spacing.md,
+    gap: tokens.spacing.sm,
+  },
+  quizHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
 });

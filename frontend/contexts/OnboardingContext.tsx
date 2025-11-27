@@ -544,6 +544,7 @@ export function OnboardingProvider({ children }: Readonly<{ children: React.Reac
       if (chatbotResponse.success) {
         // Then save to backend via apiService
         const backendData = await apiService.completeUserOnboarding({
+          sessionId,
           conversationHistory,
           userAnswers,
           userProfile: chatbotResponse.finalProfile || userProfile,

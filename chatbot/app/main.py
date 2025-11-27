@@ -29,6 +29,7 @@ from .api.search import router as search_router
 from .api.explain import router as explain_router
 from .api.market import router as market_router
 from .api.background import router as background_router
+from .api.onboarding import router as onboarding_router
 from .middleware.metrics import MetricsMiddleware
 from .background.scheduler import BackgroundScheduler, set_scheduler
 
@@ -45,11 +46,19 @@ async def lifespan(app: FastAPI):
     # This prevents ChromaDB initialization at startup, allowing faster app startup
     try:
         # Ensure game_state directory exists (lightweight, no ChromaDB dependency)
-        game_state_dir = "/home/data/game_state"
+        # Use cross-platform path - Azure uses /home/data, local uses ./data
+        if os.path.exists("/home/data"):
+            game_state_dir = "/home/data/game_state"
+        else:
+            # Local development - use relative path
+            script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            data_dir = os.path.join(script_dir, "data", "game_state")
+            game_state_dir = data_dir
         os.makedirs(game_state_dir, exist_ok=True)
         logger.info(f"Ensured game_state directory exists: {game_state_dir}")
     except Exception as e:
-        logger.warning(f"Failed to create game_state directory on startup (may already exist): {e}")
+        # Don't fail startup if directory creation fails - it's not critical
+        logger.debug(f"Game state directory creation skipped (may already exist or not needed): {e}")
     
     enable_scheduler = os.getenv('ENABLE_BACKGROUND_SCHEDULER', 'false').lower() in ('true', '1', 'yes')
     if enable_scheduler:
@@ -152,6 +161,7 @@ app.include_router(search_router, prefix="/v1", tags=["search"])
 app.include_router(explain_router, prefix="/v1", tags=["explain"])
 app.include_router(market_router, prefix="/v1", tags=["market"])
 app.include_router(background_router, prefix="/v1", tags=["background"])
+app.include_router(onboarding_router, prefix="/v1", tags=["onboarding"])
 
 logging.info("Routers mounted. Health=/healthz Docs=/docs")
 
@@ -166,15 +176,31 @@ async def root():
 
 @app.get("/healthz")
 async def health_check():
-    """Health check endpoint"""
+    """Lightweight health check endpoint - responds immediately without any dependencies"""
+    # This endpoint should be as fast as possible - no imports, no database checks, no LLM initialization
     return {
-        "status": "ok"
+        "status": "ok",
+        "service": "chatbot"
     }
 
 @app.get("/kanika")
 async def test():
     """Health check endpoint"""
     return { "Hello World": "Kanika" }
+
+@app.get("/llm-status")
+async def llm_status():
+    """Check LLM provider configuration"""
+    from .llm.client import LLMClient
+    client = LLMClient()
+    return {
+        "provider": client.provider,
+        "deepseek_configured": bool(client.deepseek_api_key),
+        "deepseek_model": client.deepseek_model if client.deepseek_api_key else None,
+        "using_openrouter": client.use_openrouter if client.deepseek_api_key else None,
+        "groq_configured": bool(client.groq_api_key and client.groq_api_key.startswith('gsk_')),
+        "groq_model": client.groq_model if (client.groq_api_key and client.groq_api_key.startswith('gsk_')) else None
+    }
 
 # Register diagnostic endpoint only in dev environment
 if os.getenv("ENV") == "dev":
