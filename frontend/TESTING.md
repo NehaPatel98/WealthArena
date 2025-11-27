@@ -40,7 +40,6 @@ describe('ComponentName', () => {
     expect(getByTestId('component-id')).toBeTruthy();
   });
 });
-```
 
 ### Service Tests
 
