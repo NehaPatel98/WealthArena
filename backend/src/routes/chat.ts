@@ -48,8 +48,8 @@ router.post('/session', authenticateToken, async (req: AuthRequest, res) => {
 router.get('/history', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const userId = req.userId!;
-    const sessionId = req.query.sessionId ? parseInt(req.query.sessionId as string) : null;
-    const limit = parseInt(req.query.limit as string) || 50;
+    const sessionId = req.query.sessionId ? Number.parseInt(req.query.sessionId as string, 10) : null;
+    const limit = Number.parseInt(req.query.limit as string, 10) || 50;
 
     const result = await executeProcedure('sp_GetChatHistory', {
       UserID: userId,
@@ -148,7 +148,7 @@ router.post('/feedback', authenticateToken, async (req: AuthRequest, res) => {
 router.get('/sessions', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const userId = req.userId!;
-    const limit = parseInt(req.query.limit as string) || 20;
+    const limit = Number.parseInt(req.query.limit as string, 10) || 20;
 
     const query = `
       SELECT TOP (@limit) *

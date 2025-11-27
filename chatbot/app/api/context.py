@@ -4,6 +4,7 @@ Context and knowledge endpoints for mobile SDKs
 """
 
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Dict, Any
@@ -239,8 +240,18 @@ async def _load_chat_history(user_id: str) -> List[Dict[str, Any]]:
         data_dir = Path("data/chat_history")
         data_dir.mkdir(parents=True, exist_ok=True)
         
+        # Sanitize user_id to prevent path traversal attacks
+        # Only allow alphanumeric, underscore, and hyphen characters
+        sanitized_user_id = re.sub(r'[^a-zA-Z0-9_-]', '', user_id)
+        if not sanitized_user_id or sanitized_user_id != user_id:
+            raise ValueError(f"Invalid user_id format: {user_id}")
+        
         # Load user's chat history
-        file_path = data_dir / f"{user_id}.json"
+        file_path = data_dir / f"{sanitized_user_id}.json"
+        
+        # Ensure the resolved path is still within the data directory (prevent path traversal)
+        if not str(file_path.resolve()).startswith(str(data_dir.resolve())):
+            raise ValueError("Invalid file path detected")
         
         if not file_path.exists():
             return []

@@ -558,17 +558,40 @@ function Invoke-Phase2-Dependencies {
         Set-Location $script:ScriptDir
     }
     
-    # Chatbot (simplified - no RAG dependencies)
-    Write-StatusMessage "Installing chatbot dependencies (simplified - no RAG)..." "INFO"
+    # Chatbot (simplified - no RAG dependencies, DeepSeek API only)
+    Write-StatusMessage "Installing chatbot dependencies (simplified - DeepSeek API only)..." "INFO"
     try {
         Set-Location (Join-Path $script:ScriptDir "chatbot")
-        pip install -r requirements.txt
-        if ($LASTEXITCODE -eq 0) {
-            Write-StatusMessage "Chatbot dependencies installed" "SUCCESS"
+        
+        # Upgrade pip first for better wheel support
+        Write-StatusMessage "Upgrading pip for better package compatibility..." "INFO"
+        python -m pip install --upgrade pip --quiet 2>&1 | Out-Null
+        
+        # Use simplified requirements file (no heavy dependencies like chromadb, pandas, numpy)
+        $requirementsFile = "requirements-simplified.txt"
+        if (-not (Test-Path $requirementsFile)) {
+            Write-StatusMessage "Simplified requirements not found, using full requirements..." "WARNING"
+            $requirementsFile = "requirements.txt"
+        }
+        else {
+            Write-StatusMessage "Using simplified requirements (DeepSeek API only - no RAG)" "INFO"
+        }
+        
+        # Install dependencies - simplified version should have no compilation issues
+        Write-StatusMessage "Installing dependencies from $requirementsFile..." "INFO"
+        $pipOutput = pip install -r $requirementsFile 2>&1
+        $exitCode = $LASTEXITCODE
+        
+        if ($exitCode -eq 0) {
+            Write-StatusMessage "Chatbot dependencies installed successfully" "SUCCESS"
+            Write-ColorOutput "  Using simplified setup: FastAPI + httpx + DeepSeek API" $Cyan
+            Write-ColorOutput "  No RAG/vector DB dependencies required" $Cyan
             $results.Chatbot = $true
         }
         else {
             Write-StatusMessage "Chatbot dependency installation failed" "ERROR"
+            Write-ColorOutput "  Error output:" $Yellow
+            Write-ColorOutput "  $pipOutput" $Red
             $results.Chatbot = $false
         }
     }
@@ -1293,7 +1316,7 @@ function Invoke-Phase4-Services {
     Write-StatusMessage "Starting Chatbot service (Direct GroQ API)..." "INFO"
     try {
         $chatbotDir = Join-Path $script:ScriptDir "chatbot"
-        $chatbotCmd = "cd '$chatbotDir'; python main.py"
+        $chatbotCmd = "cd '$chatbotDir'; python -m app.main"
         Start-Process powershell -ArgumentList '-NoExit', '-Command', $chatbotCmd
         Start-Sleep -Seconds 5
         

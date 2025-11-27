@@ -5,6 +5,7 @@ Chat endpoints for mobile SDKs
 
 import re
 import random
+import secrets
 import uuid
 import time
 from fastapi import APIRouter, HTTPException, Depends
@@ -62,8 +63,8 @@ async def chat_endpoint(request: ChatReq):
     """Chat with the educational trading bot"""
     start_time = time.time()
     try:
-        # Generate trace ID
-        trace_id = f"run-{random.randint(10000, 99999)}"
+        # Generate secure trace ID using cryptographically secure random
+        trace_id = f"run-{secrets.randbelow(90000) + 10000}"
         tools_used = []
         
         # Check if tools are enabled (for non-LLM features like sentiment analysis and price queries)
@@ -295,7 +296,7 @@ This analysis is based on a fine-tuned DistilBERT model trained on financial tex
         return ChatResp(
             reply=user_message,
             tools_used=[],
-            trace_id=f"run-{random.randint(10000, 99999)}"
+            trace_id=f"run-{secrets.randbelow(90000) + 10000}"
         )
 
 @router.get("/chat/history")

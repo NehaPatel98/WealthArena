@@ -60,24 +60,50 @@ function getIPFromExpoHost(): string | null {
     
     if (hostUri) {
       // Extract IP from formats like: "192.168.1.100:8081" or "192.168.1.100"
-      const ipMatch = hostUri.match(/([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
+      // Use a more efficient regex that prevents catastrophic backtracking
+      const ipMatch = hostUri.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/);
       if (ipMatch) {
-        return ipMatch[1];
+        // Validate that each octet is within valid IP range (0-255)
+        const ip = ipMatch[1];
+        const octets = ip.split('.');
+        const isValidIP = octets.every(octet => {
+          const num = parseInt(octet, 10);
+          return num >= 0 && num <= 255;
+        });
+        if (isValidIP) {
+          return ip;
+        }
       }
       
-      // Try to extract from full URL format
-      const urlMatch = hostUri.match(/http[s]?:\/\/([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
+      // Try to extract from full URL format with safer regex
+      const urlMatch = hostUri.match(/https?:\/\/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/);
       if (urlMatch) {
-        return urlMatch[1];
+        const ip = urlMatch[1];
+        const octets = ip.split('.');
+        const isValidIP = octets.every(octet => {
+          const num = parseInt(octet, 10);
+          return num >= 0 && num <= 255;
+        });
+        if (isValidIP) {
+          return ip;
+        }
       }
     }
     
     // Fallback: Check if there's an expoGo object with host info
     const expoGo = (Constants.expoConfig as any)?.extra?.expoGo;
     if (expoGo?.hostUri) {
-      const ipMatch = expoGo.hostUri.match(/([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
+      const ipMatch = expoGo.hostUri.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/);
       if (ipMatch) {
-        return ipMatch[1];
+        const ip = ipMatch[1];
+        const octets = ip.split('.');
+        const isValidIP = octets.every(octet => {
+          const num = parseInt(octet, 10);
+          return num >= 0 && num <= 255;
+        });
+        if (isValidIP) {
+          return ip;
+        }
       }
     }
   } catch (error) {
@@ -111,17 +137,31 @@ async function getPhysicalDeviceURL(port: number, forceRefresh: boolean = false)
   if (envVar && envVar !== `http://localhost:${port}`) {
     // Environment variable is set and not localhost - USE IT (setup script is source of truth)
     // Extract IP if it's in the format http://IP:port
-    const ipMatch = envVar.match(/^http:\/\/([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+):(\d+)$/);
+    const ipMatch = envVar.match(/^http:\/\/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):(\d+)$/);
     if (ipMatch) {
       const ip = ipMatch[1];
-      // Validate it's not a VirtualBox IP
-      if (!ip.startsWith('192.168.56.')) {
-        // Cache this IP for future use
-        await cacheIPAddress(ip, port);
-        console.log(`✅ Using IP from setup script (env var): ${envVar}`);
-        return envVar;
-      } else {
-        console.warn(`⚠️ Environment variable contains VirtualBox IP, trying other methods...`);
+      const portNum = parseInt(ipMatch[2], 10);
+      
+      // Validate IP octets are within valid range (0-255)
+      const octets = ip.split('.');
+      const isValidIP = octets.every(octet => {
+        const num = parseInt(octet, 10);
+        return num >= 0 && num <= 255;
+      });
+      
+      // Validate port is within valid range (1-65535)
+      const isValidPort = portNum >= 1 && portNum <= 65535;
+      
+      if (isValidIP && isValidPort) {
+        // Validate it's not a VirtualBox IP
+        if (!ip.startsWith('192.168.56.')) {
+          // Cache this IP for future use
+          await cacheIPAddress(ip, port);
+          console.log(`✅ Using IP from setup script (env var): ${envVar}`);
+          return envVar;
+        } else {
+          console.warn(`⚠️ Environment variable contains VirtualBox IP, trying other methods...`);
+        }
       }
     }
     // If it's a full URL (not localhost), use it directly
@@ -181,13 +221,25 @@ async function getPhysicalDeviceURL(port: number, forceRefresh: boolean = false)
   // Extract IP from EXPO_PUBLIC_BACKEND_URL if available
   const backendURL = process.env.EXPO_PUBLIC_BACKEND_URL;
   if (backendURL) {
-    const ipMatch = backendURL.match(/^http:\/\/([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+):(\d+)$/);
-    if (ipMatch) {
-      const ip = ipMatch[1];
+  const ipMatch = backendURL.match(/^http:\/\/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):(\d+)$/);
+  if (ipMatch) {
+    const ip = ipMatch[1];
+    const portNum = parseInt(ipMatch[2], 10);
+    
+    // Validate IP octets and port
+    const octets = ip.split('.');
+    const isValidIP = octets.every(octet => {
+      const num = parseInt(octet, 10);
+      return num >= 0 && num <= 255;
+    });
+    const isValidPort = portNum >= 1 && portNum <= 65535;
+    
+    if (isValidIP && isValidPort) {
       const url = `http://${ip}:${port}`;
       await cacheIPAddress(ip, port);
       return url;
     }
+  }
   }
 
   // Fallback to localhost (will likely not work on physical devices)
@@ -218,10 +270,22 @@ async function cacheIPAddress(ip: string, port: number): Promise<void> {
  * Useful for settings screen where user can configure IP
  */
 export async function setBackendURL(url: string, port: number = 3000): Promise<void> {
-  const ipMatch = url.match(/^http:\/\/([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+):(\d+)$/);
+  const ipMatch = url.match(/^http:\/\/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):(\d+)$/);
   if (ipMatch) {
     const ip = ipMatch[1];
-    await cacheIPAddress(ip, port);
+    const portNum = parseInt(ipMatch[2], 10);
+    
+    // Validate IP octets and port
+    const octets = ip.split('.');
+    const isValidIP = octets.every(octet => {
+      const num = parseInt(octet, 10);
+      return num >= 0 && num <= 255;
+    });
+    const isValidPort = portNum >= 1 && portNum <= 65535;
+    
+    if (isValidIP && isValidPort) {
+      await cacheIPAddress(ip, port);
+    }
   } else {
     // Cache the full URL even if it's not an IP (e.g., domain name)
     const storageKey = port === 3000 
@@ -360,10 +424,22 @@ export function getBackendURLSync(port: number = 3000): string {
     
     // Fallback: Try to extract IP from backend URL env var
     if (process.env.EXPO_PUBLIC_BACKEND_URL) {
-      const ipMatch = process.env.EXPO_PUBLIC_BACKEND_URL.match(/^http:\/\/([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+):(\d+)$/);
+      const ipMatch = process.env.EXPO_PUBLIC_BACKEND_URL.match(/^http:\/\/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):(\d+)$/);
       if (ipMatch) {
         const ip = ipMatch[1];
-        return `http://${ip}:${port}`;
+        const portNum = parseInt(ipMatch[2], 10);
+        
+        // Validate IP octets and port
+        const octets = ip.split('.');
+        const isValidIP = octets.every(octet => {
+          const num = parseInt(octet, 10);
+          return num >= 0 && num <= 255;
+        });
+        const isValidPort = portNum >= 1 && portNum <= 65535;
+        
+        if (isValidIP && isValidPort) {
+          return `http://${ip}:${port}`;
+        }
       }
     }
     // Final fallback - async resolution will update this

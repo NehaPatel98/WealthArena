@@ -46,10 +46,17 @@ export default function GameScreen() {
   const [isLoadingAchievements, setIsLoadingAchievements] = useState(false);
   const [isLoadingChallenge, setIsLoadingChallenge] = useState(false);
 
-  const userLevel = user?.current_level || 12;
-  const currentXP = user?.xp_points || 2450;
-  const nextLevelXP = 3000; // This would be calculated based on level
-  const xpProgress = (currentXP / nextLevelXP) * 100;
+  const userLevel = user?.current_level || 1; // Default to level 1 for new users
+  const currentXP = user?.xp_points || 0; // Default to 0 XP for new users
+  const nextLevelXP = calculateNextLevelXP(userLevel); // Calculate based on actual level
+  const xpProgress = nextLevelXP > 0 ? (currentXP / nextLevelXP) * 100 : 0;
+
+  // Calculate XP required for next level based on current level
+  function calculateNextLevelXP(level: number): number {
+    // XP progression: Level 1->2: 100 XP, Level 2->3: 250 XP, etc.
+    const levelThresholds = [0, 100, 250, 450, 700, 1000, 1350, 1750, 2200, 2700, 3250, 3850, 4500];
+    return levelThresholds[level] || (level * 500); // Fallback formula for higher levels
+  }
 
   // Load active sessions and game history
   useEffect(() => {

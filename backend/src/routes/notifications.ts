@@ -70,16 +70,16 @@ router.get('/', authenticateToken, async (req: AuthRequest, res) => {
     query += ` ORDER BY n.CreatedAt DESC`;
 
     query = `SELECT * FROM (${query}) as notifications OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY`;
-    params.offset = parseInt(offset as string);
-    params.limit = parseInt(limit as string);
+    params.offset = Number.parseInt(offset as string);
+    params.limit = Number.parseInt(limit as string);
 
     const result = await executeQuery(query, params);
 
     return successResponse(res, {
       notifications: result.recordset,
       pagination: {
-        limit: parseInt(limit as string),
-        offset: parseInt(offset as string),
+        limit: Number.parseInt(limit as string),
+        offset: Number.parseInt(offset as string),
         total: result.recordset.length
       }
     });
@@ -137,7 +137,7 @@ router.put('/:notificationId/read', authenticateToken, async (req: AuthRequest, 
     `;
 
     const result = await executeQuery(query, {
-      notificationId: parseInt(notificationId),
+      notificationId: Number.parseInt(notificationId),
       userId
     });
 
@@ -188,7 +188,7 @@ router.delete('/:notificationId', authenticateToken, async (req: AuthRequest, re
     `;
 
     const result = await executeQuery(query, {
-      notificationId: parseInt(notificationId),
+      notificationId: Number.parseInt(notificationId),
       userId
     });
 
@@ -399,7 +399,7 @@ router.post('/send', authenticateToken, async (req: AuthRequest, res) => {
         UserID, Type, Title, Message, Data, Priority, ExpiresAt, CreatedAt
       ) VALUES (@targetUserId, @type, @title, @message, @data, @priority, @expiresAt, GETUTCDATE())
     `, {
-      targetUserId: parseInt(targetUserId),
+      targetUserId: Number.parseInt(targetUserId),
       type,
       title,
       message,

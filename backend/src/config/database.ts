@@ -14,7 +14,7 @@ const config: sql.config = {
   password: process.env.DB_PASSWORD || '',
   server: process.env.DB_HOST || '',
   database: process.env.DB_NAME || 'WealthArenaDB',
-  port: parseInt(process.env.DB_PORT || '1433'),
+  port: Number.parseInt(process.env.DB_PORT || '1433', 10),
   options: {
     encrypt: process.env.DB_ENCRYPT === 'true',
     trustServerCertificate: false,

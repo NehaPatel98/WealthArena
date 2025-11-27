@@ -104,7 +104,7 @@ export async function executeQuery<T extends QueryResultRow = any>(
         // Replace @paramName with $1, $2, etc.
         for (let index = 0; index < paramEntries.length; index++) {
           const [key] = paramEntries[index];
-          const regex = new RegExp(`@${key}\\b`, 'g');
+          const regex = new RegExp(String.raw`@${key}\b`, 'g');
           postgresQuery = postgresQuery.replace(regex, `$${index + 1}`);
         }
       }

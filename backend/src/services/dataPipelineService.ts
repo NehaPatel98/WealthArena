@@ -159,7 +159,7 @@ class DataPipelineService {
               // Try YYYY-MM-DD
               const parts = row.Date.split('-');
               if (parts.length === 3) {
-                date = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+                date = new Date(Number.parseInt(parts[0], 10), Number.parseInt(parts[1], 10) - 1, Number.parseInt(parts[2], 10));
               } else {
                 date = new Date(row.Date);
               }
