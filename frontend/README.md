@@ -91,7 +91,7 @@ WealthArena is an innovative investment platform that combines financial educati
 └── tsconfig.json               # TypeScript configuration
 ```
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 - Node.js (v18 or higher)
@@ -130,7 +130,7 @@ WealthArena is an innovative investment platform that combines financial educati
 - **Android Development**: `bun run start` then press 'a' for Android Emulator
 - **Device Testing**: Use Expo Go app to scan QR code
 
-## 🎨 User Experience Features
+##  User Experience Features
 
 ### **Gamification Elements**
 - Achievement badges and progress tracking
@@ -150,7 +150,7 @@ WealthArena is an innovative investment platform that combines financial educati
 - Personalized investment recommendations
 - Adaptive learning paths
 
-## 🔧 Configuration
+##  Configuration
 
 ### **Environment Setup**
 The app uses Expo configuration in `app.json` for:
@@ -201,11 +201,11 @@ eas hosting:deploy
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-## 📄 License
+##  License
 
 This project is part of the WealthArena ecosystem and follows the project's licensing terms.
 
-## 🔗 Related Repositories
+##  Related Repositories
 
 - **Backend API**: Integration with WealthArena backend services
 - **Machine Learning**: AI-powered investment recommendations
