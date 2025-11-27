@@ -89,13 +89,12 @@ UTC = pendulum.timezone("UTC")
 CRON_UTC = "0 15 * * *"  # 02:00 Australia/Sydney (AEDT) == 15:00 UTC
 START_DATE_UTC = pendulum.datetime(2025, 11, 12, 15, 0, tz=UTC)
 
-
 with DAG(
     dag_id="multi_market_data_pipeline",
     description="Create schema, scrape, and process/store for Crypto, Forex, Commodities, then ASX (last)",
     default_args=default_args,
-    schedule=CRON_UTC,          # Airflow 2.9+ accepts 'schedule'
-    start_date=START_DATE_UTC,  # 12-Nov-2025 21:05 UTC
+    schedule=CRON_UTC,
+    start_date=START_DATE_UTC,
     catchup=False,              # NO backfills
     max_active_runs=1,
     dagrun_timeout=timedelta(hours=24),
